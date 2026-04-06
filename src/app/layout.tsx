@@ -5,8 +5,8 @@ import { auth } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: {
-    default: "KPI",
-    template: "%s | KPI",
+    default: "KPI Tracker",
+    template: "%s | KPI Tracker",
   },
   description:
     "Modern, secure authentication system built with Next.js 15, MongoDB, and NextAuth v5.",

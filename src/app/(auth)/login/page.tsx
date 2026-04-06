@@ -97,7 +97,11 @@ export default function LoginPage() {
         <div className="flex-shrink-0 w-7 h-7 relative">
           <Image src="/logo.png" alt="Logo" fill className="object-contain" priority />
         </div>
-        <span className="text-slate-800 font-semibold text-sm tracking-tight">KPI</span>
+        <span className="font-semibold text-base tracking-tight">
+  <span className="text-[#2EA8FF]">K</span>
+  <span className="text-[#FF4D4D]">P</span>
+  <span className="text-[#F4C542]">I</span>
+</span>
       </div>
 
       {/* Heading */}

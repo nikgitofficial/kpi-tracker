@@ -164,9 +164,11 @@ export function Sidebar({
             />
           </div>
           {!collapsed && (
-            <span className="text-slate-800 font-semibold text-sm tracking-tight whitespace-nowrap">
-              KPI
-            </span>
+            <span className="font-semibold text-base tracking-tight">
+  <span className="text-[#2EA8FF]">K</span>
+  <span className="text-[#FF4D4D]">P</span>
+  <span className="text-[#F4C542]">I</span>
+</span>
           )}
         </div>
 

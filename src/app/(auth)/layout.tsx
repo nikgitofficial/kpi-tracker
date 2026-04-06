@@ -47,9 +47,11 @@ export default async function AuthLayout({
               priority
             />
           </div>
-          <span className="text-white font-semibold text-base tracking-tight">
-            KPI
-          </span>
+          <span className="font-semibold text-base tracking-tight">
+  <span className="text-[#2EA8FF]">K</span>
+  <span className="text-[#FF4D4D]">P</span>
+  <span className="text-[#F4C542]">I</span>
+</span>
         </Link>
 
         <div className="flex items-center gap-1.5 text-xs text-white/70 bg-white/10 border border-white/20 rounded-full px-3 py-1 shadow-sm backdrop-blur-sm">
