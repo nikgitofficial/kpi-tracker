@@ -2,7 +2,7 @@ import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = process.env.RESEND_FROM_EMAIL ?? "noreply@example.com";
-const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? "AuthSystem";
+const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? "KPI";
 
 export async function sendOTPEmail(email: string, otp: string, name?: string) {
   const displayName = name ?? email.split("@")[0];

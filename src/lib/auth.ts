@@ -5,8 +5,10 @@ import bcrypt from "bcryptjs";
 import { connectDB } from "@/lib/db";
 import User from "@/models/User";
 import { loginSchema } from "@/lib/validations";
+import { authConfig } from "./auth.config";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  ...authConfig,
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -70,19 +72,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
 
     async jwt({ token, user, trigger, session }) {
-      // On initial sign-in, make sure email is seeded into token
       if (user) {
         token.email = user.email;
       }
 
-      // Always re-fetch from DB so image/name are always fresh
       if (token.email) {
         await connectDB();
-        const dbUser = await User.findOne({ email: token.email }).lean() as {
+        const dbUser = (await User.findOne({
+          email: token.email,
+        }).lean()) as {
           _id: { toString(): string };
           image?: string;
           name?: string;
         } | null;
+
         if (dbUser) {
           token.id = dbUser._id.toString();
           token.picture = dbUser.image ?? null;
@@ -90,7 +93,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
       }
 
-      // Handle manual update() calls from client
       if (trigger === "update" && session?.image !== undefined) {
         token.picture = session.image;
       }
@@ -107,14 +109,4 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return session;
     },
   },
-  pages: {
-    signIn: "/login",
-    error: "/login",
-  },
-  session: {
-    strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60,
-  },
-  secret: process.env.NEXTAUTH_SECRET,
-  trustHost: true,
 });

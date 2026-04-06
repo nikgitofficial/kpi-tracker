@@ -17,45 +17,26 @@ export default async function AuthLayout({
   if (session) redirect("/dashboard");
 
   return (
-    <div className="relative min-h-dvh flex flex-col overflow-hidden bg-surface-950">
-      {/* Ambient background */}
-      <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        {/* Main gradient orb */}
-        <div
-          className="absolute -top-1/4 left-1/2 -translate-x-1/2 w-[900px] h-[900px] rounded-full opacity-20 animate-glow-pulse"
-          style={{
-            background:
-              "radial-gradient(circle, rgba(99,102,241,0.4) 0%, rgba(79,70,229,0.2) 40%, transparent 70%)",
-            filter: "blur(60px)",
-          }}
-        />
-        {/* Bottom accent */}
-        <div
-          className="absolute bottom-0 left-1/4 w-[600px] h-[400px] opacity-10"
-          style={{
-            background:
-              "radial-gradient(circle, rgba(129,140,248,0.3) 0%, transparent 70%)",
-            filter: "blur(80px)",
-          }}
-        />
-        {/* Grid pattern */}
-        <div
-          className="absolute inset-0 opacity-[0.02]"
-          style={{
-            backgroundImage: `
-              linear-gradient(rgba(129,140,248,1) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(129,140,248,1) 1px, transparent 1px)
-            `,
-            backgroundSize: "64px 64px",
-          }}
-        />
-      </div>
+    <div
+      className="relative min-h-dvh flex flex-col overflow-hidden"
+      style={{
+        backgroundImage: "url('/5.jpg')",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+      }}
+    >
+      {/* Dark overlay for readability */}
+      <div className="absolute inset-0 bg-black/50 z-0" />
+
+      {/* Top border accent */}
+      <div className="fixed top-0 inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-indigo-500 to-transparent opacity-60 z-20" />
 
       {/* Logo */}
-      <header className="relative z-10 flex items-center justify-center pt-8">
+      <header className="relative z-10 flex items-center justify-between pt-6 px-8">
         <Link
           href="/"
-          className="flex items-center gap-2.5 group transition-opacity hover:opacity-80"
+          className="flex items-center gap-2.5 group transition-opacity hover:opacity-70"
         >
           <div className="flex-shrink-0 w-8 h-8 relative">
             <Image
@@ -67,9 +48,16 @@ export default async function AuthLayout({
             />
           </div>
           <span className="text-white font-semibold text-base tracking-tight">
-            AuthSystem
+            KPI
           </span>
         </Link>
+
+        <div className="flex items-center gap-1.5 text-xs text-white/70 bg-white/10 border border-white/20 rounded-full px-3 py-1 shadow-sm backdrop-blur-sm">
+          <svg className="w-3 h-3 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
+          </svg>
+          Secure login
+        </div>
       </header>
 
       {/* Content */}
@@ -78,10 +66,16 @@ export default async function AuthLayout({
       </main>
 
       {/* Footer */}
-      <footer className="relative z-10 text-center pb-6">
-        <p className="text-surface-600 text-xs">
-          © {new Date().getFullYear()} AuthSystem · Built with Next.js &amp;
-          MongoDB
+      <footer className="relative z-10 text-center pb-6 flex flex-col items-center gap-3">
+        <div className="flex items-center gap-4 text-xs text-white/50">
+          <Link href="/privacy" className="hover:text-white transition-colors">Key</Link>
+          <span className="w-px h-3 bg-white/30" />
+          <Link href="/terms" className="hover:text-white transition-colors">Performance</Link>
+          <span className="w-px h-3 bg-white/30" />
+          <Link href="/support" className="hover:text-white transition-colors">Indicator</Link>
+        </div>
+        <p className="text-white/40 text-xs">
+          © {new Date().getFullYear()} KPI · NickTech
         </p>
       </footer>
     </div>

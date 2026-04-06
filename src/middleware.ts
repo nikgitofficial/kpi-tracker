@@ -1,6 +1,8 @@
+import NextAuth from "next-auth";
+import { authConfig } from "@/lib/auth.config";
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
-import { getToken } from "next-auth/jwt";
+
+const { auth } = NextAuth(authConfig);
 
 const PUBLIC_PATHS = [
   "/login",
@@ -8,37 +10,39 @@ const PUBLIC_PATHS = [
   "/forgot-password",
   "/verify-otp",
   "/reset-password",
+];
+
+const PUBLIC_API_PATHS = [
   "/api/auth",
   "/api/forgot-password",
   "/api/verify-otp",
   "/api/reset-password",
 ];
 
-export async function middleware(req: NextRequest) {
+export default auth((req) => {
   const { nextUrl } = req;
+  const isLoggedIn = !!req.auth;
+
   const isPublicPath = PUBLIC_PATHS.some((p) =>
     nextUrl.pathname.startsWith(p)
   );
+  const isPublicApi = PUBLIC_API_PATHS.some((p) =>
+    nextUrl.pathname.startsWith(p)
+  );
 
-  const token = await getToken({
-    req,
-    secret: process.env.NEXTAUTH_SECRET,
-  });
+  if (isPublicApi) return NextResponse.next();
 
-  // Redirect unauthenticated users to login
-  if (!token && !isPublicPath) {
-    const url = new URL("/login", req.url);
+  if (isLoggedIn && isPublicPath)
+    return NextResponse.redirect(new URL("/dashboard", nextUrl));
+
+  if (!isLoggedIn && !isPublicPath) {
+    const url = new URL("/login", nextUrl);
     url.searchParams.set("callbackUrl", nextUrl.pathname);
     return NextResponse.redirect(url);
   }
 
-  // Redirect authenticated users away from auth pages
-  if (token && isPublicPath && !nextUrl.pathname.startsWith("/api")) {
-    return NextResponse.redirect(new URL("/dashboard", req.url));
-  }
-
   return NextResponse.next();
-}
+});
 
 export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)"],

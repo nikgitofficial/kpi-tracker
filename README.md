@@ -1,4 +1,4 @@
-# 🔐 AuthSystem — Full-Stack Auth with Next.js 15
+# 🔐 KPI — Full-Stack Auth with Next.js 15
 
 A production-ready authentication system with a modern 2026 design aesthetic.
 
@@ -54,7 +54,7 @@ MONGODB_URI=mongodb+srv://...
 RESEND_API_KEY=re_...
 RESEND_FROM_EMAIL=noreply@yourdomain.com
 
-NEXT_PUBLIC_APP_NAME=AuthSystem
+NEXT_PUBLIC_APP_NAME=KPI
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
