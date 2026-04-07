@@ -407,7 +407,10 @@ export default function KpiAnalyticsPage() {
   };
 
   const topAgent    = agentStats.length ? [...agentStats].sort((a, b) => b.rate - a.rate)[0] : null;
-  const lowAgent    = agentStats.length > 1 ? [...agentStats].sort((a, b) => a.rate - b.rate)[0] : null;
+  // FIX: lowAgent must be a different agent from topAgent to avoid same-agent duplicate cards
+  const lowAgent    = agentStats.length > 1
+    ? [...agentStats].sort((a, b) => a.rate - b.rate).find(a => a.agentId !== topAgent?.agentId) ?? null
+    : null;
   const mostActive  = agentStats.length ? [...agentStats].sort((a, b) => b.total - a.total)[0] : null;
   const fastestAgent = agentStats.filter(a => a.avgTat > 0).sort((a, b) => a.avgTat - b.avgTat)[0] ?? null;
   const topDoc      = docTypeStats.length ? [...docTypeStats].sort((a, b) => b.count - a.count)[0] : null;
@@ -432,6 +435,10 @@ export default function KpiAnalyticsPage() {
     try { await exportToPdf(summary, agentStats, docTypeStats, dailyTrend, from, to, formattedFrom, formattedTo); }
     finally { setExporting(null); }
   };
+
+  // FIX: pre-compute rate-based ranks once so all views use consistent ranking
+  const agentsByRate = [...agentStats].sort((a, b) => b.rate - a.rate);
+  const getRateRank = (agentId: string) => agentsByRate.findIndex(x => x.agentId === agentId) + 1;
 
   return (
     <div className="min-h-dvh bg-slate-50">
@@ -644,11 +651,12 @@ export default function KpiAnalyticsPage() {
                 </div>
                 <div className="space-y-3.5">
                   {agentStats.length === 0 && <p className="text-xs text-slate-400">No data</p>}
-                  {[...agentStats].sort((a, b) => b.total - a.total).map((a, i) => (
+                  {[...agentStats].sort((a, b) => b.total - a.total).map((a) => (
                     <div key={a.agentId}>
                       <div className="flex items-center justify-between mb-1.5">
                         <div className="flex items-center gap-2">
-                          <RankBadge rank={i + 1} total={agentStats.length} />
+                          {/* FIX: use rate-based rank for badge, not volume-sort position */}
+                          <RankBadge rank={getRateRank(a.agentId)} total={agentStats.length} />
                           <span className="text-xs text-slate-700 font-medium">{a.name}</span>
                         </div>
                         <div className="flex items-center gap-3 text-xs tabular-nums">
@@ -763,11 +771,10 @@ export default function KpiAnalyticsPage() {
                     <tr><td colSpan={9} className="px-5 py-10 text-center text-slate-400 text-sm">No data</td></tr>
                   )}
                   {sortedAgents.map((a) => {
-                    const byRate = [...agentStats].sort((x, y) => y.rate - x.rate);
-                    const rateRank = byRate.findIndex(x => x.agentId === a.agentId) + 1;
                     return (
                       <tr key={a.agentId} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3.5"><RankBadge rank={rateRank} total={agentStats.length} /></td>
+                        {/* FIX: use getRateRank helper for consistent rate-based ranking */}
+                        <td className="px-4 py-3.5"><RankBadge rank={getRateRank(a.agentId)} total={agentStats.length} /></td>
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-2">
                             <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">

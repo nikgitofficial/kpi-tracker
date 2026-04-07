@@ -61,8 +61,12 @@ export async function GET(req: NextRequest) {
     noDoc: a.noDoc,
     escalated: a.escalated,
     avgTat: a.tatCount ? Math.round(a.tatSum / a.tatCount) : 0,
-    rate: a.total ? Math.round((a.done / a.total) * 100) : 0,
-  })).sort((a, b) => b.total - a.total);
+    // FIX: exclude NO_DOC from rate denominator so it doesn't unfairly penalise agents
+    rate: (a.done + a.pending + a.escalated) > 0
+      ? Math.round((a.done / (a.done + a.pending + a.escalated)) * 100)
+      : 0,
+  // FIX: stable secondary sort by name so equal-rate agents don't randomly swap
+  })).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
 
   // Per-docType aggregation
   const docMap: Record<string, { count: number; tatSum: number; tatCount: number }> = {};
