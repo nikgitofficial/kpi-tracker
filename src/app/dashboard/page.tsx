@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { Shield, Mail, Calendar } from "lucide-react";
 import { UserAvatar } from "@/components/ui/UserAvatar";
+import { DashboardKpi } from "@/components/dashboard/DashboardKpi";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -16,7 +17,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="min-h-dvh bg-slate-50 relative overflow-hidden">
-      {/* Ambient background — matches auth layout */}
+      {/* Ambient background */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div
           className="absolute -top-1/4 left-1/2 -translate-x-1/2 w-[900px] h-[900px] rounded-full opacity-30"
@@ -49,7 +50,6 @@ export default async function DashboardPage() {
       {/* Top border accent */}
       <div className="fixed top-0 inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-indigo-500 to-transparent opacity-60 z-20" />
 
-      {/* Main */}
       <main className="relative z-10 max-w-5xl mx-auto px-6 py-12">
         {/* Welcome */}
         <div className="mb-10">
@@ -58,11 +58,14 @@ export default async function DashboardPage() {
             Welcome back, {user?.name?.split(" ")[0]} 👋
           </h1>
           <p className="text-slate-500 text-sm mt-1">
-            You&apos;re securely signed in to your account.
+            Here&apos;s what&apos;s happening with your team today.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        {/* ── KPI live section (client component) ── */}
+        <DashboardKpi />
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
           {/* Profile card */}
           <div className="md:col-span-2 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm shadow-slate-200/60">
             <div className="flex items-start gap-4">
@@ -125,7 +128,7 @@ export default async function DashboardPage() {
         </div>
 
         {/* Info banner */}
-        <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-5">
+        <div className="mt-4 bg-indigo-50 border border-indigo-200 rounded-2xl p-5">
           <div className="flex items-start gap-3">
             <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center flex-shrink-0 mt-0.5">
               <Shield size={14} className="text-indigo-500" />

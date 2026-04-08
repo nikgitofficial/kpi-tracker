@@ -331,8 +331,11 @@ export default function TxLogPage() {
                 {agent.name.slice(0, 2).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
-                <span className="truncate font-medium block">{agent.name}</span>
-                {agent.group && <span className="text-[10px] text-slate-400">{agent.group}</span>}
+                <span className="truncate font-medium block" style={{ fontFamily: "Calibri, sans-serif" }}>
+  {agent.name}
+</span>
+
+                {agent.group && <span className="text-[10px] text-slate-400" style={{ fontFamily: "Calibri, sans-serif" }}>{agent.group}</span>}
               </div>
             </button>
           ))}

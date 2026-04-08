@@ -18,6 +18,7 @@ interface AgentStat {
 }
 interface DocTypeStat { type: string; count: number; avgTat: number }
 interface DailyPoint  { date: string; count: number }
+interface AgentDailyRate { date: string; rate: number | null }
 
 /* ─── Helpers ─── */
 function formatTat(sec: number) {
@@ -37,6 +38,36 @@ function fmtDate(s: string) {
 }
 
 type SortKey = "total" | "done" | "pending" | "escalated" | "avgTat" | "rate";
+
+/* ─── Streak alert helper ─── */
+interface StreakAlert extends AgentStat {
+  maxStreak: number;
+  days: AgentDailyRate[];
+}
+
+function getStreakAlerts(
+  agentStats: AgentStat[],
+  agentDailyRates: Record<string, AgentDailyRate[]>,
+  minStreak = 3,
+  rateThreshold = 60,
+): StreakAlert[] {
+  return agentStats
+    .map((agent) => {
+      const days = agentDailyRates[agent.agentId] ?? [];
+      let maxStreak = 0, streak = 0;
+      for (const d of days) {
+        if (d.rate !== null && d.rate < rateThreshold) {
+          streak++;
+          maxStreak = Math.max(maxStreak, streak);
+        } else {
+          streak = 0;
+        }
+      }
+      return { ...agent, maxStreak, days };
+    })
+    .filter((a) => a.maxStreak >= minStreak)
+    .sort((a, b) => b.maxStreak - a.maxStreak);
+}
 
 /* ─── Export helpers ─── */
 function loadScript(src: string): Promise<void> {
@@ -371,6 +402,174 @@ function SortTh({ label, col, sort, onSort }: { label: string; col: SortKey; sor
   );
 }
 
+/* ─── Streak Alert Panel ─── */
+function StreakAlertPanel({
+  alerts,
+  minStreak,
+  rateThreshold,
+  onChangeMinStreak,
+  onChangeRateThreshold,
+}: {
+  alerts: StreakAlert[];
+  minStreak: number;
+  rateThreshold: number;
+  onChangeMinStreak: (v: number) => void;
+  onChangeRateThreshold: (v: number) => void;
+}) {
+  const [dismissed, setDismissed] = useState(false);
+
+  if (dismissed) return (
+    <div className="mb-6 flex items-center justify-between bg-white border border-slate-200 rounded-2xl px-4 py-3">
+      <div className="flex items-center gap-2">
+        <AlertTriangle size={13} className="text-red-400" />
+        <span className="text-xs text-slate-500">
+          {alerts.length} agent{alerts.length !== 1 ? "s" : ""} flagged for consecutive low performance
+        </span>
+      </div>
+      <button
+        onClick={() => setDismissed(false)}
+        className="text-xs text-indigo-500 hover:text-indigo-700 font-semibold transition-colors"
+      >
+        Show alerts
+      </button>
+    </div>
+  );
+
+  return (
+    <div className="mb-6 bg-white border border-red-200 rounded-2xl p-5">
+      {/* Header row */}
+      <div className="flex items-start justify-between mb-4 gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <AlertTriangle size={14} className="text-red-500 flex-shrink-0" />
+          <h2 className="text-sm font-semibold text-slate-800">Consecutive low-performance alerts</h2>
+          <span className="px-2 py-0.5 rounded-full bg-red-50 border border-red-200 text-red-500 text-[10px] font-bold">
+            {alerts.length}
+          </span>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Streak threshold */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-slate-400">Flag after</span>
+            <select
+              value={minStreak}
+              onChange={(e) => onChangeMinStreak(Number(e.target.value))}
+              className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-700 focus:outline-none focus:border-indigo-400 transition-colors"
+            >
+              <option value={3}>3 days</option>
+              <option value={4}>4 days</option>
+            </select>
+          </div>
+          {/* Rate threshold */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-slate-400">below</span>
+            <select
+              value={rateThreshold}
+              onChange={(e) => onChangeRateThreshold(Number(e.target.value))}
+              className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-700 focus:outline-none focus:border-indigo-400 transition-colors"
+            >
+              <option value={50}>50%</option>
+              <option value={60}>60%</option>
+              <option value={70}>70%</option>
+              <option value={80}>80%</option>
+            </select>
+          </div>
+          <button
+            onClick={() => setDismissed(true)}
+            className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-400 text-xs font-semibold hover:bg-slate-100 transition-colors"
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
+
+      {/* No alerts state */}
+      {alerts.length === 0 && (
+        <p className="text-xs text-slate-400 py-4 text-center">
+          No agents flagged for consecutive low performance in this date range.
+        </p>
+      )}
+
+      {/* Alert rows */}
+      <div className="space-y-2.5">
+        {alerts.map((a) => {
+          const isCritical = a.maxStreak >= 4;
+          return (
+            <div
+              key={a.agentId}
+              className={`flex items-start gap-3 p-3.5 rounded-xl border transition-colors ${
+                isCritical
+                  ? "border-red-200 bg-red-50"
+                  : "border-amber-200 bg-amber-50"
+              }`}
+            >
+              {/* Avatar */}
+              <div
+                className={`w-9 h-9 rounded-lg flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${
+                  isCritical ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
+                }`}
+              >
+                {a.name.slice(0, 2).toUpperCase()}
+              </div>
+
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-slate-800 truncate">{a.name}</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {a.maxStreak}-day low streak · current rate {a.rate}% · {a.total} TX total
+                </p>
+                {/* Day dots */}
+                <div className="flex gap-1 mt-2 flex-wrap">
+                  {a.days.map((d) => (
+                    <div
+                      key={d.date}
+                      title={`${fmtDate(d.date)}: ${d.rate !== null ? `${d.rate}%` : "no data"}`}
+                      className={`w-3 h-3 rounded-sm transition-colors ${
+                        d.rate === null
+                          ? "bg-slate-200"
+                          : d.rate < rateThreshold
+                          ? "bg-red-400"
+                          : "bg-green-400"
+                      }`}
+                    />
+                  ))}
+                </div>
+                {/* Legend */}
+                <div className="flex items-center gap-3 mt-1.5">
+                  <div className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-sm bg-red-400 inline-block" />
+                    <span className="text-[10px] text-slate-400">Low</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-sm bg-green-400 inline-block" />
+                    <span className="text-[10px] text-slate-400">OK</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-sm bg-slate-200 inline-block" />
+                    <span className="text-[10px] text-slate-400">No data</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Streak count */}
+              <div className="flex-shrink-0 text-right">
+                <p className={`text-2xl font-bold tabular-nums leading-none ${isCritical ? "text-red-500" : "text-amber-500"}`}>
+                  {a.maxStreak}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">days</p>
+                {isCritical && (
+                  <span className="inline-block mt-1.5 px-1.5 py-0.5 rounded bg-red-100 border border-red-200 text-red-600 text-[9px] font-bold">
+                    CRITICAL
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ─── Main Page ─── */
 export default function KpiAnalyticsPage() {
   const [from, setFrom]               = useState(daysAgo(6));
@@ -379,10 +578,13 @@ export default function KpiAnalyticsPage() {
   const [agentStats, setAgentStats]   = useState<AgentStat[]>([]);
   const [docTypeStats, setDocTypeStats] = useState<DocTypeStat[]>([]);
   const [dailyTrend, setDailyTrend]   = useState<DailyPoint[]>([]);
+  const [agentDailyRates, setAgentDailyRates] = useState<Record<string, AgentDailyRate[]>>({});
   const [loading, setLoading]         = useState(false);
   const [sort, setSort]               = useState<[SortKey, "asc"|"desc"]>(["total", "desc"]);
   const [tab, setTab]                 = useState<"overview"|"agents"|"docs">("overview");
   const [exporting, setExporting]     = useState<"pdf"|"excel"|null>(null);
+  const [alertMinStreak, setAlertMinStreak]       = useState(3);
+  const [alertRateThreshold, setAlertRateThreshold] = useState(60);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -392,6 +594,7 @@ export default function KpiAnalyticsPage() {
     setAgentStats(d.agentStats ?? []);
     setDocTypeStats(d.docTypeStats ?? []);
     setDailyTrend(d.dailyTrend ?? []);
+    setAgentDailyRates(d.agentDailyRates ?? {});
     setLoading(false);
   }, [from, to]);
 
@@ -439,6 +642,9 @@ export default function KpiAnalyticsPage() {
   // FIX: pre-compute rate-based ranks once so all views use consistent ranking
   const agentsByRate = [...agentStats].sort((a, b) => b.rate - a.rate);
   const getRateRank = (agentId: string) => agentsByRate.findIndex(x => x.agentId === agentId) + 1;
+
+  // Streak alerts — recomputed when agentStats, agentDailyRates, or thresholds change
+  const streakAlerts = getStreakAlerts(agentStats, agentDailyRates, alertMinStreak, alertRateThreshold);
 
   return (
     <div className="min-h-dvh bg-slate-50">
@@ -496,6 +702,17 @@ export default function KpiAnalyticsPage() {
         </div>
 
         {loading && <div className="text-center py-8 text-slate-400 text-sm">Loading analytics…</div>}
+
+        {/* ── Streak Alert Panel ── */}
+        {!loading && agentStats.length > 0 && (
+          <StreakAlertPanel
+            alerts={streakAlerts}
+            minStreak={alertMinStreak}
+            rateThreshold={alertRateThreshold}
+            onChangeMinStreak={setAlertMinStreak}
+            onChangeRateThreshold={setAlertRateThreshold}
+          />
+        )}
 
         {/* ── KPI Summary Cards ── */}
         {summary && (
