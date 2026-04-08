@@ -168,6 +168,8 @@ export function Sidebar({
   <span className="text-[#2EA8FF]">K</span>
   <span className="text-[#FF4D4D]">P</span>
   <span className="text-[#F4C542]">I</span>
+  <span className="text-[#2EA8FF]">-HERBJOY</span>
+  
 </span>
           )}
         </div>

@@ -219,6 +219,7 @@ export default function LoginPage() {
                 <span className="text-blue-400">K</span>
                 <span className="text-red-400">P</span>
                 <span className="text-amber-400">I</span>
+                <span className="text-[#2EA8FF]">-HERBJOY</span>
               </span>
               <p className="text-xs text-indigo-300 mt-0.5">Performance Analytics</p>
             </div>
@@ -325,6 +326,7 @@ export default function LoginPage() {
               <span className="text-[#2EA8FF]">K</span>
               <span className="text-[#FF4D4D]">P</span>
               <span className="text-[#F4C542]">I</span>
+              
             </span>
           </div>
 
