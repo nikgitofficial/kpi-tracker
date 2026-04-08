@@ -112,7 +112,7 @@ export default function LoginPage() {
             <div className="space-y-4">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-400/30">
                 <Zap className="w-3 h-3 text-indigo-300" />
-                <span className="text-xs font-medium text-indigo-300">Inclusive for HerbJoy & FlexSkill Teams</span>
+                <span className="text-xs font-medium text-indigo-300">Inclusive for FlexSkill Teams</span>
               </div>
               
               <p className="text-indigo-200 text-lg leading-relaxed">
@@ -132,7 +132,7 @@ export default function LoginPage() {
                   <div className="flex-shrink-0 w-1 h-auto bg-blue-500 rounded-full"></div>
                   <div>
                     <p className="text-white font-medium mb-1">Real-time Agent Monitoring</p>
-                    <p className="text-indigo-200 text-sm">Track HerbJoy & FlexSkill agent activity, response times, and task completion rates</p>
+                    <p className="text-indigo-200 text-sm">Track  FlexSkill agent activity, response times, and task completion rates</p>
                   </div>
                 </div>
 
@@ -140,7 +140,7 @@ export default function LoginPage() {
                   <div className="flex-shrink-0 w-1 h-auto bg-emerald-500 rounded-full"></div>
                   <div>
                     <p className="text-white font-medium mb-1">Productivity Analytics</p>
-                    <p className="text-indigo-200 text-sm">Measure individual and team output with detailed performance metrics for both departments</p>
+                    <p className="text-indigo-200 text-sm">Measure individual and team output with detailed performance metrics </p>
                   </div>
                 </div>
 
@@ -148,7 +148,7 @@ export default function LoginPage() {
                   <div className="flex-shrink-0 w-1 h-auto bg-amber-500 rounded-full"></div>
                   <div>
                     <p className="text-white font-medium mb-1">EOD Reports & Records</p>
-                    <p className="text-indigo-200 text-sm">Generate end-of-day reports with complete productivity summaries for HerbJoy and FlexSkill</p>
+                    <p className="text-indigo-200 text-sm">Generate end-of-day reports with complete productivity summaries for  FlexSkill</p>
                   </div>
                 </div>
 
@@ -174,19 +174,19 @@ export default function LoginPage() {
               <div className="space-y-3">
                 <div className="flex items-center gap-3 text-sm">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                  <span className="text-indigo-200">Track daily agent tasks and assignments across HerbJoy & FlexSkill</span>
+                  <span className="text-indigo-200">Track daily agent tasks and assignments for FlexSkill</span>
                 </div>
                 <div className="flex items-center gap-3 text-sm">
                   <Clock className="w-4 h-4 text-blue-400 flex-shrink-0" />
-                  <span className="text-indigo-200">Monitor time spent on each activity per department</span>
+                  <span className="text-indigo-200">Monitor time spent on each activity per agents</span>
                 </div>
                 <div className="flex items-center gap-3 text-sm">
                   <FileText className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                  <span className="text-indigo-200">Generate automated EOD performance reports for both teams</span>
+                  <span className="text-indigo-200">Generate automated EOD performance reports for teams</span>
                 </div>
                 <div className="flex items-center gap-3 text-sm">
                   <Users className="w-4 h-4 text-purple-400 flex-shrink-0" />
-                  <span className="text-indigo-200">Compare HerbJoy vs FlexSkill team performance metrics</span>
+                  <span className="text-indigo-200">Compare FlexSkill team performance metrics</span>
                 </div>
               </div>
             </div>
