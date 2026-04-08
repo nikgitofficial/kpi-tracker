@@ -76,9 +76,10 @@ export default async function AuthLayout({
           <span className="w-px h-3 bg-white/30" />
           <Link href="/support" className="hover:text-white transition-colors">Indicator</Link>
         </div>
-        <p className="text-white/40 text-xs">
-          © {new Date().getFullYear()} KPI · NickTech
-        </p>
+       <p className="text-white/50 text-xs tracking-wide font-medium">
+  © {new Date().getFullYear()} KPI Dashboard · Crafted by{" "}
+  <span className="text-white/80 font-semibold">NikPacs</span>
+</p>
       </footer>
     </div>
   );
