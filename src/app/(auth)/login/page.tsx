@@ -230,12 +230,12 @@ export default function LoginPage() {
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-400/30">
                 <Zap className="w-3 h-3 text-indigo-300" />
                 <span className="text-xs font-medium text-indigo-300">
-                  Inclusive for FlexSkill Teams
+                  Inclusive for HerbJoy Teams
                 </span>
               </div>
 
               <p className="text-indigo-200 text-lg leading-relaxed">
-                Monitor agent performance for FlexSkill teams, track productivity
+                Monitor agent performance for HerbJoy teams, track productivity
                 metrics, and manage EOD records in real-time.
               </p>
             </div>
@@ -245,7 +245,7 @@ export default function LoginPage() {
               <FeatureItem
                 icon={<div className="w-full h-full bg-blue-500 rounded-full" />}
                 title="Real-time Agent Monitoring"
-                description="Track FlexSkill agent activity, response times, and task completion rates"
+                description="Track HerbJoy agent activity, response times, and task completion rates"
               />
               <FeatureItem
                 icon={<div className="w-full h-full bg-emerald-500 rounded-full" />}
@@ -255,7 +255,7 @@ export default function LoginPage() {
               <FeatureItem
                 icon={<div className="w-full h-full bg-amber-500 rounded-full" />}
                 title="EOD Reports & Records"
-                description="Generate end-of-day reports with complete productivity summaries for FlexSkill"
+                description="Generate end-of-day reports with complete productivity summaries for HerbJoy"
               />
               <FeatureItem
                 icon={<div className="w-full h-full bg-purple-500 rounded-full" />}
@@ -268,7 +268,7 @@ export default function LoginPage() {
             <FeatureSection icon={<Target className="w-5 h-5 text-amber-400" />} title="Unified Productivity Workflow">
               <BulletPoint
                 icon={<CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />}
-                text="Track daily agent tasks and assignments for FlexSkill"
+                text="Track daily agent tasks and assignments for HerbJoy"
               />
               <BulletPoint
                 icon={<Clock className="w-4 h-4 text-blue-400 flex-shrink-0" />}
@@ -280,7 +280,7 @@ export default function LoginPage() {
               />
               <BulletPoint
                 icon={<Users className="w-4 h-4 text-purple-400 flex-shrink-0" />}
-                text="Compare FlexSkill team performance metrics"
+                text="Compare HerbJoy team performance metrics"
               />
             </FeatureSection>
 
@@ -288,7 +288,7 @@ export default function LoginPage() {
             <div className="mt-6 p-4 bg-indigo-500/10 rounded-lg border border-indigo-400/20">
               <p className="text-indigo-300 text-sm text-center">
                 ✨ Comprehensive solution for{" "}
-                <strong className="text-white">FlexSkill</strong> teams
+                <strong className="text-white">HerbJoy</strong> teams
               </p>
             </div>
           </div>
