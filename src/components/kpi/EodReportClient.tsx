@@ -1,7 +1,10 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { ChevronDown, ChevronRight, FileText, FileSpreadsheet } from "lucide-react";
+import {
+  ChevronDown, ChevronRight, FileText, FileSpreadsheet,
+  Layers, Ungroup,
+} from "lucide-react";
 
 type TxStatus = "PENDING" | "COMPLETION" | "ESCALATION";
 
@@ -32,6 +35,7 @@ interface AgentRow {
   total: number;
   aht: number;
   transactions: Transaction[];
+  docTypeCounts: Record<string, number>;
 }
 
 interface Agent {
@@ -62,6 +66,44 @@ function statusLabel(s: TxStatus) {
   return "Pending";
 }
 
+/* ─── Doc Type Breakdown (expandable per agent) ─── */
+function DocTypeBreakdown({
+  counts,
+  allDocTypes,
+}: {
+  counts: Record<string, number>;
+  allDocTypes: string[];
+}) {
+  const maxCount = Math.max(...Object.values(counts), 1);
+  const active = allDocTypes.filter(dt => (counts[dt] ?? 0) > 0);
+  if (active.length === 0) return null;
+  return (
+    <tr className="bg-indigo-50/40 border-b border-indigo-100">
+      <td colSpan={8} className="px-6 py-2.5 pl-16">
+        <div className="flex flex-wrap gap-x-6 gap-y-1.5">
+          {active.map(dt => {
+            const count = counts[dt] ?? 0;
+            return (
+              <div key={dt} className="flex items-center gap-2 min-w-[140px]">
+                <span className="text-[11px] text-slate-500 w-28 truncate">{dt}</span>
+                <div className="flex-1 h-1 bg-slate-200 rounded-full overflow-hidden w-16">
+                  <div
+                    className="h-full bg-indigo-400 rounded-full"
+                    style={{ width: `${(count / maxCount) * 100}%` }}
+                  />
+                </div>
+                <span className="text-[11px] font-semibold text-indigo-600 tabular-nums w-5 text-right">
+                  {count}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 /* ─── Export helpers ─── */
 function loadScript(src: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -79,6 +121,7 @@ async function exportToExcel(
   groups: string[],
   totals: { totalTat: number; completion: number; pending: number; escalation: number; total: number },
   overallAht: number,
+  globalDocTypeCounts: Record<string, number>,
   date: string,
 ) {
   await loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js");
@@ -86,12 +129,14 @@ async function exportToExcel(
   const XLSX = (window as any).XLSX;
   const wb = XLSX.utils.book_new();
 
-  // Summary sheet with group subtotals
+  const allDocTypes = Object.keys(globalDocTypeCounts).sort();
+
+  // Summary sheet with group subtotals + doc type columns
   const summaryRows: object[] = [];
   for (const group of groups) {
     const rows = grouped[group] ?? [];
     rows.forEach((r, i) => {
-      summaryRows.push({
+      const base: Record<string, unknown> = {
         "#":                 i + 1,
         "Group":             group,
         "Agent":             r.agentName,
@@ -101,12 +146,14 @@ async function exportToExcel(
         "Escalation":        r.escalation,
         "Total TX":          r.total,
         "AHT per TX":        formatTat(r.aht),
-      });
+      };
+      for (const dt of allDocTypes) base[dt] = r.docTypeCounts[dt] ?? 0;
+      summaryRows.push(base);
     });
     if (rows.length > 1) {
-      const gTat = rows.reduce((a, r) => a + r.totalTat, 0);
-      const gAht = rows.reduce((a, r) => a + r.total, 0);
-      summaryRows.push({
+      const gTat   = rows.reduce((a, r) => a + r.totalTat, 0);
+      const gTotal = rows.reduce((a, r) => a + r.total, 0);
+      const sub: Record<string, unknown> = {
         "#":                 "—",
         "Group":             group,
         "Agent":             "SUBTOTAL",
@@ -114,12 +161,15 @@ async function exportToExcel(
         "Completion":        rows.reduce((a, r) => a + r.completion, 0),
         "Pending":           rows.reduce((a, r) => a + r.pending, 0),
         "Escalation":        rows.reduce((a, r) => a + r.escalation, 0),
-        "Total TX":          rows.reduce((a, r) => a + r.total, 0),
-        "AHT per TX":        formatTat(gAht ? Math.round(gTat / gAht) : 0),
-      });
+        "Total TX":          gTotal,
+        "AHT per TX":        formatTat(gTotal ? Math.round(gTat / gTotal) : 0),
+      };
+      for (const dt of allDocTypes)
+        sub[dt] = rows.reduce((a, r) => a + (r.docTypeCounts[dt] ?? 0), 0);
+      summaryRows.push(sub);
     }
   }
-  summaryRows.push({
+  const overall: Record<string, unknown> = {
     "#":                 "—",
     "Group":             "ALL",
     "Agent":             "TOTAL",
@@ -129,14 +179,23 @@ async function exportToExcel(
     "Escalation":        totals.escalation,
     "Total TX":          totals.total,
     "AHT per TX":        formatTat(overallAht),
-  });
+  };
+  for (const dt of allDocTypes) overall[dt] = globalDocTypeCounts[dt] ?? 0;
+  summaryRows.push(overall);
 
   const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
   wsSummary["!cols"] = [
     { wch: 4 }, { wch: 16 }, { wch: 24 }, { wch: 20 },
     { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 14 },
+    ...allDocTypes.map(() => ({ wch: 16 })),
   ];
   XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
+
+  // Doc Type totals sheet
+  const docRows = allDocTypes.map(dt => ({ "Task Type": dt, "Total": globalDocTypeCounts[dt] ?? 0 }));
+  const wsDT = XLSX.utils.json_to_sheet(docRows);
+  wsDT["!cols"] = [{ wch: 28 }, { wch: 10 }];
+  XLSX.utils.book_append_sheet(wb, wsDT, "Task Type Summary");
 
   // Per-agent sheets
   for (const group of groups) {
@@ -144,7 +203,7 @@ async function exportToExcel(
       const txRows = row.transactions.map((tx, i) => ({
         "#":           i + 1,
         "TX ID":       tx.txId,
-        "Type of Doc": tx.docType,
+        "Type of Taks": tx.docType,
         "Company":     tx.companyName,
         "Volume":      tx.volume,
         "Start":       tx.startTime,
@@ -170,6 +229,7 @@ async function exportToPdf(
   groups: string[],
   totals: { totalTat: number; completion: number; pending: number; escalation: number; total: number },
   overallAht: number,
+  globalDocTypeCounts: Record<string, number>,
   date: string,
   formattedDate: string,
   activeAgents: number,
@@ -221,13 +281,12 @@ async function exportToPdf(
   let cursorY = 44;
 
   for (const group of groups) {
-    const rows = grouped[group] ?? [];
-    const gTat = rows.reduce((a, r) => a + r.totalTat, 0);
+    const rows   = grouped[group] ?? [];
+    const gTat   = rows.reduce((a, r) => a + r.totalTat, 0);
     const gTotal = rows.reduce((a, r) => a + r.total, 0);
 
     if (cursorY > 170) { doc.addPage(); cursorY = 10; }
 
-    // Group header bar
     doc.setFillColor(40, 40, 65);
     doc.rect(10, cursorY, 277, 7, "F");
     doc.setTextColor(160, 160, 210); doc.setFontSize(7.5); doc.setFont("helvetica", "bold");
@@ -279,6 +338,33 @@ async function exportToPdf(
     cursorY = (doc as any).lastAutoTable.finalY + 6;
   }
 
+  // Doc Type summary page
+  const allDocTypes = Object.keys(globalDocTypeCounts).sort();
+  if (allDocTypes.length > 0) {
+    doc.addPage();
+    doc.setFillColor(20, 20, 36);
+    doc.rect(0, 0, 297, 14, "F");
+    doc.setTextColor(160, 160, 210);
+    doc.setFontSize(10); doc.setFont("helvetica", "bold");
+    doc.text("Tasks Summary — Task Type Breakdown", 10, 10);
+
+    const docBody = allDocTypes.map(dt => [dt, globalDocTypeCounts[dt] ?? 0]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (doc as any).autoTable({
+      startY: 18,
+      head: [["Task Type", "Total Count"]],
+      body: docBody,
+      styles: { fontSize: 8, cellPadding: 2.5, textColor: [190, 190, 210], fillColor: [22, 22, 38], lineColor: [45, 45, 70], lineWidth: 0.2 },
+      headStyles: { fillColor: [35, 35, 60], textColor: [130, 130, 190], fontStyle: "bold", fontSize: 7 },
+      alternateRowStyles: { fillColor: [28, 28, 48] },
+      columnStyles: {
+        0: { cellWidth: 80 },
+        1: { cellWidth: 30, halign: "center", textColor: [120, 160, 255], fontStyle: "bold" },
+      },
+      margin: { left: 10, right: 10 },
+    });
+  }
+
   // Per-agent detail pages
   for (const group of groups) {
     for (const row of grouped[group] ?? []) {
@@ -304,7 +390,7 @@ async function exportToPdf(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (doc as any).autoTable({
         startY: 20,
-        head: [["#", "TX ID", "Type of Doc", "Company", "Vol", "Start", "End", "TAT", "Status", "Notes"]],
+        head: [["#", "TX ID", "Type of Task", "Company", "Vol", "Start", "End", "TAT", "Status", "Notes"]],
         body: txBody,
         styles: { fontSize: 7.5, cellPadding: 2, textColor: [190, 190, 210], fillColor: [22, 22, 38], lineColor: [45, 45, 70], lineWidth: 0.2 },
         headStyles: { fillColor: [35, 35, 60], textColor: [130, 130, 190], fontStyle: "bold", fontSize: 7 },
@@ -358,7 +444,15 @@ export function EodReportClient() {
   const [date, setDate] = useState(today());
   const [grouped, setGrouped] = useState<Record<string, AgentRow[]>>({});
   const [groups, setGroups] = useState<string[]>([]);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [globalDocTypeCounts, setGlobalDocTypeCounts] = useState<Record<string, number>>({});
+
+  // View toggles
+  const [isGrouped, setIsGrouped] = useState(true);
+  const [expandedTx, setExpandedTx] = useState<Set<string>>(new Set());       // tx detail rows
+  const [expandedDt, setExpandedDt] = useState<Set<string>>(new Set());       // doc-type breakdown rows
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [showDocSummary, setShowDocSummary] = useState(true);
+
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState<"pdf" | "excel" | null>(null);
 
@@ -372,29 +466,27 @@ export function EodReportClient() {
     const txData    = await txRes.json();
     const agentData = await agentRes.json();
 
-    const txs: Transaction[]  = txData.transactions ?? [];
-    const agents: Agent[]     = agentData.agents ?? [];
+    const txs: Transaction[] = txData.transactions ?? [];
+    const agents: Agent[]    = agentData.agents ?? [];
 
-    // Build agent→group lookup
     const groupMap = new Map<string, string>();
-    for (const a of agents) {
-      groupMap.set(a._id, a.group ?? "Ungrouped");
-    }
+    for (const a of agents) groupMap.set(a._id, a.group ?? "Ungrouped");
 
     const agentRowMap = new Map<string, AgentRow>();
     for (const tx of txs) {
       if (!agentRowMap.has(tx.agentId)) {
         agentRowMap.set(tx.agentId, {
-          agentId:      tx.agentId,
-          agentName:    tx.agentName,
-          group:        groupMap.get(tx.agentId) ?? "Ungrouped",
-          totalTat:     0,
-          completion:   0,
-          pending:      0,
-          escalation:   0,
-          total:        0,
-          aht:          0,
-          transactions: [],
+          agentId:       tx.agentId,
+          agentName:     tx.agentName,
+          group:         groupMap.get(tx.agentId) ?? "Ungrouped",
+          totalTat:      0,
+          completion:    0,
+          pending:       0,
+          escalation:    0,
+          total:         0,
+          aht:           0,
+          transactions:  [],
+          docTypeCounts: {},
         });
       }
       const row = agentRowMap.get(tx.agentId)!;
@@ -404,12 +496,22 @@ export function EodReportClient() {
       if (tx.status === "COMPLETION") row.completion++;
       if (tx.status === "PENDING")    row.pending++;
       if (tx.status === "ESCALATION") row.escalation++;
+      // tally doc type
+      row.docTypeCounts[tx.docType] = (row.docTypeCounts[tx.docType] ?? 0) + 1;
     }
 
     const rows = Array.from(agentRowMap.values()).map(r => ({
       ...r,
       aht: r.total ? Math.round(r.totalTat / r.total) : 0,
     }));
+
+    // Build global doc type counts
+    const globalDT: Record<string, number> = {};
+    for (const r of rows) {
+      for (const [dt, cnt] of Object.entries(r.docTypeCounts)) {
+        globalDT[dt] = (globalDT[dt] ?? 0) + cnt;
+      }
+    }
 
     // Group agents
     const groupedResult: Record<string, AgentRow[]> = {};
@@ -419,7 +521,6 @@ export function EodReportClient() {
       groupedResult[g].push(row);
     }
 
-    // Preserve agent group order from agents list, then any extras
     const seenGroups = new Set<string>();
     const orderedGroups: string[] = [];
     for (const a of agents) {
@@ -432,27 +533,30 @@ export function EodReportClient() {
     for (const g of Object.keys(groupedResult)) {
       if (!seenGroups.has(g)) orderedGroups.push(g);
     }
-
     orderedGroups.sort((a, b) =>
-  a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
-);
+      a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
+    );
 
     setGrouped(groupedResult);
     setGroups(orderedGroups);
+    setGlobalDocTypeCounts(globalDT);
     setLoading(false);
   }, [date]);
 
   useEffect(() => { load(); }, [load]);
 
-  const toggleExpand = (id: string) => {
-    setExpanded(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
+  const toggleTx = (id: string) =>
+    setExpandedTx(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
-  const allRows = Object.values(grouped).flat();
+  const toggleDt = (id: string) =>
+    setExpandedDt(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  const toggleGroup = (g: string) =>
+    setCollapsedGroups(prev => { const n = new Set(prev); n.has(g) ? n.delete(g) : n.add(g); return n; });
+
+  const allRows      = Object.values(grouped).flat();
+  const flatRows     = [...allRows].sort((a, b) => a.agentName.localeCompare(b.agentName));
+  const allDocTypes  = Object.keys(globalDocTypeCounts).sort();
 
   const totals = allRows.reduce(
     (acc, r) => ({
@@ -475,15 +579,162 @@ export function EodReportClient() {
 
   const handleExcelExport = async () => {
     setExporting("excel");
-    try { await exportToExcel(grouped, groups, totals, overallAht, date); }
+    try { await exportToExcel(grouped, groups, totals, overallAht, globalDocTypeCounts, date); }
     finally { setExporting(null); }
   };
 
   const handlePdfExport = async () => {
     setExporting("pdf");
-    try { await exportToPdf(grouped, groups, totals, overallAht, date, formattedDate, activeAgents); }
+    try { await exportToPdf(grouped, groups, totals, overallAht, globalDocTypeCounts, date, formattedDate, activeAgents); }
     finally { setExporting(null); }
   };
+
+  /* ── Renders agent table rows (shared between grouped & ungrouped) ── */
+  const renderAgentRows = (rows: AgentRow[]) =>
+    rows.map((row, i) => {
+      const txOpen = expandedTx.has(row.agentId);
+      const dtOpen = expandedDt.has(row.agentId);
+      const hasDt  = Object.keys(row.docTypeCounts).length > 0;
+      const isLast = i === rows.length - 1;
+
+      return (
+        <React.Fragment key={row.agentId}>
+          {/* Agent summary row */}
+          <tr
+            className={`border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer ${
+              isLast && !txOpen && !dtOpen ? "border-b-0" : ""
+            }`}
+            onClick={() => toggleTx(row.agentId)}
+          >
+            <td className="px-5 py-3.5">
+              <div className="flex items-center gap-2.5">
+                {txOpen
+                  ? <ChevronDown  size={13} className="text-slate-400" />
+                  : <ChevronRight size={13} className="text-slate-400" />}
+                <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                  {row.agentName.slice(0, 2).toUpperCase()}
+                </div>
+                <span className="text-slate-700 font-medium">{row.agentName}</span>
+              </div>
+            </td>
+            <td className="text-center px-4 py-3.5 font-mono text-indigo-500 font-semibold text-xs">
+              {formatTat(row.totalTat)}
+            </td>
+            <td className="text-center px-4 py-3.5 text-green-600 font-semibold">{row.completion}</td>
+            <td className="text-center px-4 py-3.5 text-amber-500 font-semibold">{row.pending || 0}</td>
+            <td className="text-center px-4 py-3.5 text-purple-500 font-semibold">{row.escalation || 0}</td>
+            <td className="text-center px-4 py-3.5 text-slate-700 font-semibold">{row.total}</td>
+            <td className="text-center px-4 py-3.5 font-mono text-indigo-500 text-xs font-semibold">
+              {formatTat(row.aht)}
+            </td>
+            {/* Doc-type toggle button */}
+            <td className="pr-3 py-3.5 text-right">
+              {hasDt && (
+                <button
+                  onClick={e => { e.stopPropagation(); toggleDt(row.agentId); }}
+                  title="Toggle Task type breakdown"
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[10px] font-semibold transition-all ${
+                    dtOpen
+                      ? "bg-indigo-100 border-indigo-200 text-indigo-600"
+                      : "bg-slate-50 border-slate-200 text-slate-400 hover:border-indigo-200 hover:text-indigo-500"
+                  }`}
+                >
+                  Tasks
+                  {dtOpen
+                    ? <ChevronDown  size={10} />
+                    : <ChevronRight size={10} />}
+                </button>
+              )}
+            </td>
+          </tr>
+
+          {/* Doc type breakdown */}
+          {dtOpen && hasDt && (
+            <DocTypeBreakdown counts={row.docTypeCounts} allDocTypes={allDocTypes} />
+          )}
+
+          {/* Transaction detail */}
+          {txOpen && (
+            <tr>
+              <td colSpan={8} className="bg-slate-50 border-b border-slate-100 px-6 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
+                  {row.agentName} — {row.transactions.length} Transaction{row.transactions.length !== 1 ? "s" : ""}
+                </p>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-slate-400">
+                      <th className="text-left py-1.5 pr-4 font-semibold">#</th>
+                      <th className="text-left py-1.5 pr-4 font-semibold">ID</th>
+                      <th className="text-left py-1.5 pr-4 font-semibold">Type of Tasks</th>
+                      <th className="text-left py-1.5 pr-4 font-semibold">Company</th>
+                      <th className="text-left py-1.5 pr-4 font-semibold">Start</th>
+                      <th className="text-left py-1.5 pr-4 font-semibold">End</th>
+                      <th className="text-left py-1.5 pr-4 font-semibold">TAT</th>
+                      <th className="text-left py-1.5 pr-4 font-semibold">Status</th>
+                      <th className="text-left py-1.5 font-semibold">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {row.transactions.map((tx, j) => (
+                      <tr key={tx._id} className="border-t border-slate-100">
+                        <td className="py-2 pr-4 text-slate-400">{j + 1}</td>
+                        <td className="py-2 pr-4 font-mono text-slate-600 font-semibold">{tx.txId}</td>
+                        <td className="py-2 pr-4 text-slate-500">{tx.docType}</td>
+                        <td className="py-2 pr-4 text-slate-500 max-w-[120px] truncate">{tx.companyName}</td>
+                        <td className="py-2 pr-4 font-mono text-slate-500">{tx.startTime}</td>
+                        <td className="py-2 pr-4 font-mono text-slate-500">{tx.endTime ?? "—"}</td>
+                        <td className="py-2 pr-4 font-mono text-indigo-500 font-semibold">{formatTat(tx.tat)}</td>
+                        <td className="py-2 pr-4">
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-semibold ${STATUS_STYLES[tx.status]}`}>
+                            {statusLabel(tx.status)}
+                          </span>
+                        </td>
+                        <td className="py-2 text-slate-400">{tx.notes || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </td>
+            </tr>
+          )}
+        </React.Fragment>
+      );
+    });
+
+  /* ── Agent table shell ── */
+  const renderTable = (rows: AgentRow[], gTat: number, gTotal: number, gComp: number, gPend: number, gEsc: number, gAht: number, showSubtotal: boolean) => (
+    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-slate-200">
+            <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Agent</th>
+            <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-indigo-400">Total Handle Time</th>
+            <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-green-600"># Completion</th>
+            <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-amber-500"># Pending</th>
+            <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-purple-500"># Escalation</th>
+            <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Total TX</th>
+            <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-indigo-400">AHT per TX</th>
+            <th className="w-20 px-3 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-300 text-right">Tasks</th>
+          </tr>
+        </thead>
+        <tbody>
+          {renderAgentRows(rows)}
+          {showSubtotal && rows.length > 1 && (
+            <tr className="bg-slate-50 border-t border-slate-200">
+              <td className="px-5 py-2.5 text-xs font-bold text-slate-400 uppercase tracking-wider pl-14">Subtotal</td>
+              <td className="text-center px-4 py-2.5 font-mono text-indigo-500 font-bold text-xs">{formatTat(gTat)}</td>
+              <td className="text-center px-4 py-2.5 text-green-600 font-bold">{gComp}</td>
+              <td className="text-center px-4 py-2.5 text-amber-500 font-bold">{gPend}</td>
+              <td className="text-center px-4 py-2.5 text-purple-500 font-bold">{gEsc}</td>
+              <td className="text-center px-4 py-2.5 text-slate-700 font-bold">{gTotal}</td>
+              <td className="text-center px-4 py-2.5 font-mono text-indigo-500 text-xs font-bold">{formatTat(gAht)}</td>
+              <td />
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
 
   return (
     <div className="min-h-dvh bg-slate-50">
@@ -497,7 +748,7 @@ export function EodReportClient() {
             <p className="text-slate-400 text-sm mt-0.5">{formattedDate}</p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
             <input
               type="date"
               value={date}
@@ -509,6 +760,22 @@ export function EodReportClient() {
               className="px-3 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-500 text-xs font-semibold hover:bg-indigo-100 transition-colors"
             >
               Today
+            </button>
+
+            <div className="h-6 w-px bg-slate-200 mx-1" />
+
+            {/* Group / Ungroup toggle */}
+            <button
+              onClick={() => setIsGrouped(g => !g)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
+                isGrouped
+                  ? "bg-slate-700 border-slate-700 text-white hover:bg-slate-800"
+                  : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+              }`}
+              title={isGrouped ? "Switch to ungrouped view" : "Switch to grouped view"}
+            >
+              {isGrouped ? <Layers size={13} /> : <Ungroup size={13} />}
+              {isGrouped ? "Grouped" : "Ungrouped"}
             </button>
 
             <div className="h-6 w-px bg-slate-200 mx-1" />
@@ -570,21 +837,80 @@ export function EodReportClient() {
           </div>
         )}
 
-        {/* ── Groups ── */}
-        {!loading && groups.map(group => {
-          const rows   = grouped[group] ?? [];
-          const gTat   = rows.reduce((a, r) => a + r.totalTat, 0);
-          const gTotal = rows.reduce((a, r) => a + r.total, 0);
-          const gComp  = rows.reduce((a, r) => a + r.completion, 0);
-          const gPend  = rows.reduce((a, r) => a + r.pending, 0);
-          const gEsc   = rows.reduce((a, r) => a + r.escalation, 0);
-          const gAht   = gTotal ? Math.round(gTat / gTotal) : 0;
+        {/* ── Tasks Summary Panel ── */}
+        {!loading && allDocTypes.length > 0 && (
+          <div className="mb-5 bg-white border border-slate-200 rounded-2xl overflow-hidden">
+            <button
+              onClick={() => setShowDocSummary(s => !s)}
+              className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-slate-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-green-500" />
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-widest">Tasks Summary</span>
+                </div>
+                <span className="text-[11px] text-slate-400">
+                  {allDocTypes.length} type{allDocTypes.length !== 1 ? "s" : ""} · {Object.values(globalDocTypeCounts).reduce((a, b) => a + b, 0)} total transactions
+                </span>
+              </div>
+              <ChevronDown
+                size={14}
+                className={`text-slate-400 transition-transform duration-200 ${showDocSummary ? "rotate-180" : ""}`}
+              />
+            </button>
+
+            {showDocSummary && (
+              <div className="border-t border-slate-200 px-5 py-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Overall Totals</p>
+                <div className="flex flex-wrap gap-3">
+                  {allDocTypes.map(dt => {
+                    const count    = globalDocTypeCounts[dt] ?? 0;
+                    const maxCount = Math.max(...Object.values(globalDocTypeCounts), 1);
+                    return (
+                      <div key={dt} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 min-w-[150px]">
+                        <div className="flex-1">
+                          <p className="text-[11px] text-slate-500 truncate">{dt}</p>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <div className="flex-1 h-1 bg-slate-200 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-indigo-400 rounded-full transition-all duration-500"
+                                style={{ width: `${(count / maxCount) * 100}%` }}
+                              />
+                            </div>
+                            <span className="text-xs font-bold text-indigo-600 tabular-nums">{count}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── GROUPED view ── */}
+        {!loading && isGrouped && groups.map(group => {
+          const rows    = grouped[group] ?? [];
+          const gTat    = rows.reduce((a, r) => a + r.totalTat, 0);
+          const gTotal  = rows.reduce((a, r) => a + r.total, 0);
+          const gComp   = rows.reduce((a, r) => a + r.completion, 0);
+          const gPend   = rows.reduce((a, r) => a + r.pending, 0);
+          const gEsc    = rows.reduce((a, r) => a + r.escalation, 0);
+          const gAht    = gTotal ? Math.round(gTat / gTotal) : 0;
+          const collapsed = collapsedGroups.has(group);
 
           return (
             <div key={group} className="mb-5">
-              {/* Group header */}
-              <div className="flex items-center gap-3 mb-2">
+              {/* Group header — clickable to collapse */}
+              <button
+                onClick={() => toggleGroup(group)}
+                className="flex items-center gap-3 mb-2 w-full text-left"
+              >
                 <div className="flex items-center gap-2">
+                  {collapsed
+                    ? <ChevronRight size={13} className="text-slate-400" />
+                    : <ChevronDown  size={13} className="text-indigo-500" />}
                   <div className="w-2 h-2 rounded-full bg-indigo-500" />
                   <h2 className="text-xs font-bold text-slate-700 uppercase tracking-widest">{group}</h2>
                 </div>
@@ -597,119 +923,33 @@ export function EodReportClient() {
                   <span>Escalation: <span className="text-purple-500 font-semibold">{gEsc}</span></span>
                   <span>Total TX: <span className="text-slate-600 font-semibold">{gTotal}</span></span>
                 </div>
-              </div>
+              </button>
 
-              {/* ── Group table ── */}
-              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-200">
-                      <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Agent</th>
-                      <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-indigo-400">Total Handle Time</th>
-                      <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-green-600"># Completion</th>
-                      <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-amber-500"># Pending</th>
-                      <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-purple-500"># Escalation</th>
-                      <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Total TX</th>
-                      <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-indigo-400">AHT per TX</th>
-                      <th className="w-8" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((row, i) => (
-                      <React.Fragment key={row.agentId}>
-                        {/* Agent row */}
-                        <tr
-                          className={`border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer ${
-                            i === rows.length - 1 && !expanded.has(row.agentId) ? "border-b-0" : ""
-                          }`}
-                          onClick={() => toggleExpand(row.agentId)}
-                        >
-                          <td className="px-5 py-3.5">
-                            <div className="flex items-center gap-2.5">
-                              {expanded.has(row.agentId)
-                                ? <ChevronDown size={13} className="text-slate-400" />
-                                : <ChevronRight size={13} className="text-slate-400" />}
-                              <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                                {row.agentName.slice(0, 2).toUpperCase()}
-                              </div>
-                              <span className="text-slate-700 font-medium">{row.agentName}</span>
-                            </div>
-                          </td>
-                          <td className="text-center px-4 py-3.5 font-mono text-indigo-500 font-semibold text-xs">{formatTat(row.totalTat)}</td>
-                          <td className="text-center px-4 py-3.5 text-green-600 font-semibold">{row.completion}</td>
-                          <td className="text-center px-4 py-3.5 text-amber-500 font-semibold">{row.pending || 0}</td>
-                          <td className="text-center px-4 py-3.5 text-purple-500 font-semibold">{row.escalation || 0}</td>
-                          <td className="text-center px-4 py-3.5 text-slate-700 font-semibold">{row.total}</td>
-                          <td className="text-center px-4 py-3.5 font-mono text-indigo-500 text-xs font-semibold">{formatTat(row.aht)}</td>
-                          <td />
-                        </tr>
-
-                        {/* Expanded transactions */}
-                        {expanded.has(row.agentId) && (
-                          <tr>
-                            <td colSpan={8} className="bg-slate-50 border-b border-slate-100 px-6 py-3">
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
-                                {row.agentName} — {row.transactions.length} Transaction{row.transactions.length !== 1 ? "s" : ""}
-                              </p>
-                              <table className="w-full text-xs">
-                                <thead>
-                                  <tr className="text-slate-400">
-                                    <th className="text-left py-1.5 pr-4 font-semibold">#</th>
-                                    <th className="text-left py-1.5 pr-4 font-semibold">ID</th>
-                                    <th className="text-left py-1.5 pr-4 font-semibold">Type of Doc</th>
-                                    <th className="text-left py-1.5 pr-4 font-semibold">Company</th>
-                                    <th className="text-left py-1.5 pr-4 font-semibold">Start</th>
-                                    <th className="text-left py-1.5 pr-4 font-semibold">End</th>
-                                    <th className="text-left py-1.5 pr-4 font-semibold">TAT</th>
-                                    <th className="text-left py-1.5 pr-4 font-semibold">Status</th>
-                                    <th className="text-left py-1.5 font-semibold">Notes</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {row.transactions.map((tx, j) => (
-                                    <tr key={tx._id} className="border-t border-slate-100">
-                                      <td className="py-2 pr-4 text-slate-400">{j + 1}</td>
-                                      <td className="py-2 pr-4 font-mono text-slate-600 font-semibold">{tx.txId}</td>
-                                      <td className="py-2 pr-4 text-slate-500">{tx.docType}</td>
-                                      <td className="py-2 pr-4 text-slate-500 max-w-[120px] truncate">{tx.companyName}</td>
-                                      <td className="py-2 pr-4 font-mono text-slate-500">{tx.startTime}</td>
-                                      <td className="py-2 pr-4 font-mono text-slate-500">{tx.endTime ?? "—"}</td>
-                                      <td className="py-2 pr-4 font-mono text-indigo-500 font-semibold">{formatTat(tx.tat)}</td>
-                                      <td className="py-2 pr-4">
-                                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-semibold ${STATUS_STYLES[tx.status]}`}>
-                                          {statusLabel(tx.status)}
-                                        </span>
-                                      </td>
-                                      <td className="py-2 text-slate-400">{tx.notes || "—"}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    ))}
-
-                    {/* Group subtotal row */}
-                    {rows.length > 1 && (
-                      <tr className="bg-slate-50 border-t border-slate-200">
-                        <td className="px-5 py-2.5 text-xs font-bold text-slate-400 uppercase tracking-wider pl-14">Subtotal</td>
-                        <td className="text-center px-4 py-2.5 font-mono text-indigo-500 font-bold text-xs">{formatTat(gTat)}</td>
-                        <td className="text-center px-4 py-2.5 text-green-600 font-bold">{gComp}</td>
-                        <td className="text-center px-4 py-2.5 text-amber-500 font-bold">{gPend}</td>
-                        <td className="text-center px-4 py-2.5 text-purple-500 font-bold">{gEsc}</td>
-                        <td className="text-center px-4 py-2.5 text-slate-700 font-bold">{gTotal}</td>
-                        <td className="text-center px-4 py-2.5 font-mono text-indigo-500 text-xs font-bold">{formatTat(gAht)}</td>
-                        <td />
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              {!collapsed && renderTable(rows, gTat, gTotal, gComp, gPend, gEsc, gAht, true)}
             </div>
           );
         })}
+
+        {/* ── UNGROUPED view ── */}
+        {!loading && !isGrouped && flatRows.length > 0 && (
+          <div className="mb-5">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-slate-400" />
+                <h2 className="text-xs font-bold text-slate-700 uppercase tracking-widest">All Agents</h2>
+              </div>
+              <div className="flex-1 h-px bg-slate-200" />
+              <span className="text-[11px] text-slate-400">{flatRows.length} agents</span>
+            </div>
+            {renderTable(
+              flatRows,
+              totals.totalTat, totals.total,
+              totals.completion, totals.pending, totals.escalation,
+              overallAht,
+              false,
+            )}
+          </div>
+        )}
 
         {/* ── Overall totals ── */}
         {!loading && allRows.length > 0 && (
@@ -724,7 +964,7 @@ export function EodReportClient() {
                   <td className="text-center px-4 py-3.5 text-purple-500 font-bold">{totals.escalation}</td>
                   <td className="text-center px-4 py-3.5 text-slate-900 font-bold">{totals.total}</td>
                   <td className="text-center px-4 py-3.5 font-mono text-indigo-500 text-xs font-bold">{formatTat(overallAht)}</td>
-                  <td className="w-8" />
+                  <td className="w-20" />
                 </tr>
               </tbody>
             </table>

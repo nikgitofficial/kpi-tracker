@@ -149,7 +149,7 @@ async function exportToExcel(
   const XLSX = (window as any).XLSX;
   const rows = transactions.map((tx, i) => ({
     "#": i + 1,
-    "Type of Doc": tx.docType,
+    "Type of Task": tx.docType,
     "Company": tx.companyName,
     "Volume": tx.volume,
     "TAT": formatTat(tx.tat),
@@ -213,7 +213,7 @@ async function exportToPdf(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (doc as any).autoTable({
     startY: 44,
-    head: [["#", "Type of Doc", "Company", "Vol", "TAT", "Status", "Notes"]],
+    head: [["#", "Type of Task", "Company", "Vol", "TAT", "Status", "Notes"]],
     body: tableBody,
     styles: { fontSize: 8, cellPadding: 2.5, textColor: [200, 200, 210], fillColor: [25, 25, 40], lineColor: [50, 50, 70], lineWidth: 0.2 },
     headStyles: { fillColor: [40, 40, 65], textColor: [150, 150, 200], fontStyle: "bold", fontSize: 7.5 },
@@ -752,7 +752,7 @@ export default function TxLogPage() {
 
                     <form onSubmit={handleEnd} className="space-y-3">
                       <div>
-                        <label className="block text-xs text-slate-500 mb-1">Type of Doc</label>
+                        <label className="block text-xs text-slate-500 mb-1">Type of Task</label>
                         <select value={endDocType} onChange={e => setEndDocType(e.target.value)} className={selectCls}>
                           <option value="">Select type…</option>
                           {docTypes.map(dt => <option key={dt._id} value={dt.name}>{dt.name}</option>)}
@@ -824,7 +824,7 @@ export default function TxLogPage() {
 
                     <form onSubmit={handleStart} className="space-y-3">
                       <div>
-                        <label className="block text-xs text-slate-500 mb-1">Type of Doc</label>
+                        <label className="block text-xs text-slate-500 mb-1">Type of Tasks</label>
                         <select value={docType} onChange={e => setDocType(e.target.value)} className={selectCls}>
                           <option value="">Select type…</option>
                           {docTypes.map(dt => <option key={dt._id} value={dt.name}>{dt.name}</option>)}
@@ -911,7 +911,7 @@ export default function TxLogPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-200">
-                      {["#", "Type of Doc", "Company", "Vol", "Elapsed / TAT", "Status", "Notes", ""].map(h => (
+                      {["#", "Type of Tasks", "Company", "Vol", "Elapsed / TAT", "Status", "Notes", ""].map(h => (
                         <th key={h} className="text-left px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{h}</th>
                       ))}
                     </tr>
@@ -1080,7 +1080,7 @@ export default function TxLogPage() {
             <h2 className="text-base font-semibold text-slate-900 mb-4">Edit Transaction</h2>
             <form onSubmit={handleEdit} className="space-y-3">
               <div>
-                <label className="block text-xs text-slate-500 mb-1">Type of Doc</label>
+                <label className="block text-xs text-slate-500 mb-1">Type of Task</label>
                 <select value={editDocType} onChange={e => setEditDocType(e.target.value)} className={selectCls}>
                   <option value="">Select type…</option>
                   {docTypes.map(dt => <option key={dt._id} value={dt.name}>{dt.name}</option>)}

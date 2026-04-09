@@ -94,14 +94,14 @@ async function exportToExcel(
 
   if (summary) {
     const summaryData = [
-      ["Date Range",       `${from} to ${to}`],
-      ["Total TX",         summary.totalTx],
-      ["Done",             summary.done],
-      ["Pending",          summary.pending],
-      ["No Doc",           summary.noDoc],
-      ["Escalated",        summary.escalated],
-      ["Avg TAT",          formatTat(summary.avgTat)],
-      ["Completion Rate",  `${summary.completionRate}%`],
+      ["Date Range",        `${from} to ${to}`],
+      ["Total TX",          summary.totalTx],
+      ["Completion",        summary.done],
+      ["Pending",           summary.pending],
+      ["No Doc",            summary.noDoc],
+      ["Escalation",        summary.escalated],
+      ["Avg TAT",           formatTat(summary.avgTat)],
+      ["Completion Rate",   `${summary.completionRate}%`],
     ];
     const ws = XLSX.utils.aoa_to_sheet(summaryData);
     ws["!cols"] = [{ wch: 18 }, { wch: 20 }];
@@ -110,34 +110,34 @@ async function exportToExcel(
 
   const byRate = [...agentStats].sort((a, b) => b.rate - a.rate);
   const agentRows = byRate.map((a, i) => ({
-    "Rank":       i + 1,
-    "Agent":      a.name,
-    "Total TX":   a.total,
-    "Done":       a.done,
-    "Pending":    a.pending,
-    "No Doc":     a.noDoc,
-    "Escalated":  a.escalated,
-    "Avg TAT":    formatTat(a.avgTat),
-    "Rate %":     +a.rate,
+    "Rank":        i + 1,
+    "Agent":       a.name,
+    "Total TX":    a.total,
+    "Completion":  a.done,
+    "Pending":     a.pending,
+    "No Doc":      a.noDoc,
+    "Escalation":  a.escalated,
+    "Avg TAT":     formatTat(a.avgTat),
+    "Rate %":      +a.rate,
   }));
   const wsAgents = XLSX.utils.json_to_sheet(agentRows);
   wsAgents["!cols"] = [
-    { wch: 6 }, { wch: 24 }, { wch: 10 }, { wch: 8 },
+    { wch: 6 }, { wch: 24 }, { wch: 10 }, { wch: 12 },
     { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 10 },
   ];
   XLSX.utils.book_append_sheet(wb, wsAgents, "Agent Stats");
 
   const docTotal = docTypeStats.reduce((s, d) => s + d.count, 0);
   const docRows = [...docTypeStats].sort((a, b) => b.count - a.count).map((d, i) => ({
-    "#":        i + 1,
-    "Doc Type": d.type,
-    "Count":    d.count,
-    "Avg TAT":  formatTat(d.avgTat),
-    "Share %":  docTotal ? +(((d.count / docTotal) * 100).toFixed(1)) : 0,
+    "#":             i + 1,
+    "Type of Task":  d.type,
+    "Count":         d.count,
+    "Avg TAT":       formatTat(d.avgTat),
+    "Share %":       docTotal ? +(((d.count / docTotal) * 100).toFixed(1)) : 0,
   }));
   const wsDocs = XLSX.utils.json_to_sheet(docRows);
   wsDocs["!cols"] = [{ wch: 4 }, { wch: 28 }, { wch: 10 }, { wch: 14 }, { wch: 10 }];
-  XLSX.utils.book_append_sheet(wb, wsDocs, "Doc Types");
+  XLSX.utils.book_append_sheet(wb, wsDocs, "Tasks Types");
 
   const trendRows = dailyTrend.map(d => ({ "Date": d.date, "TX Count": d.count }));
   const wsTrend = XLSX.utils.json_to_sheet(trendRows);
@@ -176,12 +176,12 @@ async function exportToPdf(
 
   if (summary) {
     const kpis = [
-      { label: "TOTAL TX",   value: String(summary.totalTx),          rgb: [180,180,220] as [number,number,number] },
-      { label: "DONE",       value: String(summary.done),             rgb: [80,200,120]  as [number,number,number] },
-      { label: "PENDING",    value: String(summary.pending),          rgb: [220,170,60]  as [number,number,number] },
-      { label: "ESCALATED",  value: String(summary.escalated),        rgb: [160,120,220] as [number,number,number] },
-      { label: "AVG TAT",    value: formatTat(summary.avgTat),        rgb: [120,160,255] as [number,number,number] },
-      { label: "COMP RATE",  value: `${summary.completionRate}%`,     rgb: [80,200,120]  as [number,number,number] },
+      { label: "TOTAL TX",    value: String(summary.totalTx),          rgb: [180,180,220] as [number,number,number] },
+      { label: "COMPLETION",  value: String(summary.done),             rgb: [80,200,120]  as [number,number,number] },
+      { label: "PENDING",     value: String(summary.pending),          rgb: [220,170,60]  as [number,number,number] },
+      { label: "ESCALATION",  value: String(summary.escalated),        rgb: [160,120,220] as [number,number,number] },
+      { label: "AVG TAT",     value: formatTat(summary.avgTat),        rgb: [120,160,255] as [number,number,number] },
+      { label: "COMP RATE",   value: `${summary.completionRate}%`,     rgb: [80,200,120]  as [number,number,number] },
     ];
     const bw = 42, bh = 14, sx = 10, sy = 26;
     kpis.forEach((k, i) => {
@@ -277,7 +277,7 @@ async function exportToPdf(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (doc as any).autoTable({
     startY: 18,
-    head: [["Rank", "Agent", "Total", "Done", "Pending", "No Doc", "Escalated", "Avg TAT", "Rate"]],
+    head: [["Rank", "Agent", "Total", "Completion", "Pending", "No Doc", "Escalation", "Avg TAT", "Rate"]],
     body: agentBody,
     styles: { fontSize: 8, cellPadding: 2.5, textColor: [190, 190, 210], fillColor: [22, 22, 38], lineColor: [45, 45, 70], lineWidth: 0.2 },
     headStyles: { fillColor: [35, 35, 60], textColor: [130, 130, 190], fontStyle: "bold", fontSize: 7 },
@@ -286,7 +286,7 @@ async function exportToPdf(
       0: { cellWidth: 10, halign: "center" },
       1: { cellWidth: 50 },
       2: { cellWidth: 18, halign: "center" },
-      3: { cellWidth: 18, halign: "center", textColor: [80, 200, 120] },
+      3: { cellWidth: 22, halign: "center", textColor: [80, 200, 120] },
       4: { cellWidth: 18, halign: "center", textColor: [220, 170, 60] },
       5: { cellWidth: 18, halign: "center", textColor: [220, 80, 80] },
       6: { cellWidth: 22, halign: "center", textColor: [160, 120, 220] },
@@ -311,7 +311,7 @@ async function exportToPdf(
   doc.rect(0, 0, 297, 14, "F");
   doc.setTextColor(160, 160, 210);
   doc.setFontSize(10); doc.setFont("helvetica", "bold");
-  doc.text("Doc Type Performance", 10, 10);
+  doc.text("Task Type Performance", 10, 10);
   doc.setFontSize(8); doc.setFont("helvetica", "normal");
   doc.setTextColor(100, 100, 150);
   doc.text(`${formattedFrom} — ${formattedTo}`, 287, 10, { align: "right" });
@@ -325,7 +325,7 @@ async function exportToPdf(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (doc as any).autoTable({
     startY: 18,
-    head: [["#", "Doc Type", "Count", "Avg TAT", "Share"]],
+    head: [["#", "Task Type", "Count", "Avg TAT", "Share"]],
     body: docBody,
     styles: { fontSize: 8, cellPadding: 2.5, textColor: [190, 190, 210], fillColor: [22, 22, 38], lineColor: [45, 45, 70], lineWidth: 0.2 },
     headStyles: { fillColor: [35, 35, 60], textColor: [130, 130, 190], fontStyle: "bold", fontSize: 7 },
@@ -447,7 +447,6 @@ function StreakAlertPanel({
           </span>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          {/* Streak threshold */}
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] text-slate-400">Flag after</span>
             <select
@@ -459,7 +458,6 @@ function StreakAlertPanel({
               <option value={4}>4 days</option>
             </select>
           </div>
-          {/* Rate threshold */}
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] text-slate-400">below</span>
             <select
@@ -482,14 +480,12 @@ function StreakAlertPanel({
         </div>
       </div>
 
-      {/* No alerts state */}
       {alerts.length === 0 && (
         <p className="text-xs text-slate-400 py-4 text-center">
           No agents flagged for consecutive low performance in this date range.
         </p>
       )}
 
-      {/* Alert rows */}
       <div className="space-y-2.5">
         {alerts.map((a) => {
           const isCritical = a.maxStreak >= 4;
@@ -497,43 +493,32 @@ function StreakAlertPanel({
             <div
               key={a.agentId}
               className={`flex items-start gap-3 p-3.5 rounded-xl border transition-colors ${
-                isCritical
-                  ? "border-red-200 bg-red-50"
-                  : "border-amber-200 bg-amber-50"
+                isCritical ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"
               }`}
             >
-              {/* Avatar */}
-              <div
-                className={`w-9 h-9 rounded-lg flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${
-                  isCritical ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
-                }`}
-              >
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${
+                isCritical ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
+              }`}>
                 {a.name.slice(0, 2).toUpperCase()}
               </div>
-
-              {/* Info */}
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-slate-800 truncate">{a.name}</p>
                 <p className="text-[11px] text-slate-500 mt-0.5">
                   {a.maxStreak}-day low streak · current rate {a.rate}% · {a.total} TX total
                 </p>
-                {/* Day dots */}
                 <div className="flex gap-1 mt-2 flex-wrap">
                   {a.days.map((d) => (
                     <div
                       key={d.date}
                       title={`${fmtDate(d.date)}: ${d.rate !== null ? `${d.rate}%` : "no data"}`}
                       className={`w-3 h-3 rounded-sm transition-colors ${
-                        d.rate === null
-                          ? "bg-slate-200"
-                          : d.rate < rateThreshold
-                          ? "bg-red-400"
+                        d.rate === null ? "bg-slate-200"
+                          : d.rate < rateThreshold ? "bg-red-400"
                           : "bg-green-400"
                       }`}
                     />
                   ))}
                 </div>
-                {/* Legend */}
                 <div className="flex items-center gap-3 mt-1.5">
                   <div className="flex items-center gap-1">
                     <span className="w-2 h-2 rounded-sm bg-red-400 inline-block" />
@@ -549,8 +534,6 @@ function StreakAlertPanel({
                   </div>
                 </div>
               </div>
-
-              {/* Streak count */}
               <div className="flex-shrink-0 text-right">
                 <p className={`text-2xl font-bold tabular-nums leading-none ${isCritical ? "text-red-500" : "text-amber-500"}`}>
                   {a.maxStreak}
@@ -610,7 +593,6 @@ export default function KpiAnalyticsPage() {
   };
 
   const topAgent    = agentStats.length ? [...agentStats].sort((a, b) => b.rate - a.rate)[0] : null;
-  // FIX: lowAgent must be a different agent from topAgent to avoid same-agent duplicate cards
   const lowAgent    = agentStats.length > 1
     ? [...agentStats].sort((a, b) => a.rate - b.rate).find(a => a.agentId !== topAgent?.agentId) ?? null
     : null;
@@ -639,11 +621,11 @@ export default function KpiAnalyticsPage() {
     finally { setExporting(null); }
   };
 
-  // FIX: pre-compute rate-based ranks once so all views use consistent ranking
+  // Pre-compute rate-based ranks once so all views use consistent ranking
   const agentsByRate = [...agentStats].sort((a, b) => b.rate - a.rate);
   const getRateRank = (agentId: string) => agentsByRate.findIndex(x => x.agentId === agentId) + 1;
 
-  // Streak alerts — recomputed when agentStats, agentDailyRates, or thresholds change
+  // Streak alerts
   const streakAlerts = getStreakAlerts(agentStats, agentDailyRates, alertMinStreak, alertRateThreshold);
 
   return (
@@ -718,12 +700,12 @@ export default function KpiAnalyticsPage() {
         {summary && (
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-6">
             {[
-              { label: "Total TX",  value: summary.totalTx,              color: "text-slate-700",  sub: "transactions" },
-              { label: "Completed", value: summary.done,                 color: "text-green-600",  sub: "finished"     },
-              { label: "Pending",   value: summary.pending,              color: "text-amber-500",  sub: "in queue"     },
-              { label: "Escalated", value: summary.escalated,            color: "text-purple-500", sub: "flagged"      },
-              { label: "Avg TAT",   value: formatTat(summary.avgTat),    color: "text-indigo-500", sub: "per tx"       },
-              { label: "Rate",      value: `${summary.completionRate}%`, color: "text-green-600",  sub: "completion"   },
+              { label: "Total TX",    value: summary.totalTx,              color: "text-slate-700",  sub: "transactions" },
+              { label: "Completion",  value: summary.done,                 color: "text-green-600",  sub: "finished"     },
+              { label: "Pending",     value: summary.pending,              color: "text-amber-500",  sub: "in queue"     },
+              { label: "Escalation",  value: summary.escalated,            color: "text-purple-500", sub: "flagged"      },
+              { label: "Avg TAT",     value: formatTat(summary.avgTat),    color: "text-indigo-500", sub: "per tx"       },
+              { label: "Rate",        value: `${summary.completionRate}%`, color: "text-green-600",  sub: "completion"   },
             ].map(s => (
               <div key={s.label} className="bg-white border border-slate-200 rounded-2xl px-4 py-4 text-center hover:border-slate-300 transition-colors">
                 <p className={`text-xl font-bold tabular-nums ${s.color}`}>{s.value}</p>
@@ -794,9 +776,9 @@ export default function KpiAnalyticsPage() {
         {/* ── Tabs ── */}
         <div className="flex items-center gap-1 mb-5 bg-white border border-slate-200 rounded-xl p-1 w-fit">
           {([
-            { key: "overview", label: "Overview",  icon: Activity  },
-            { key: "agents",   label: "Agents",    icon: Users     },
-            { key: "docs",     label: "Doc Types", icon: BarChart2 },
+            { key: "overview", label: "Overview",    icon: Activity  },
+            { key: "agents",   label: "Agents",      icon: Users     },
+            { key: "docs",     label: "Tasks Types", icon: BarChart2 },
           ] as const).map(t => {
             const Icon = t.icon;
             return (
@@ -872,7 +854,6 @@ export default function KpiAnalyticsPage() {
                     <div key={a.agentId}>
                       <div className="flex items-center justify-between mb-1.5">
                         <div className="flex items-center gap-2">
-                          {/* FIX: use rate-based rank for badge, not volume-sort position */}
                           <RankBadge rank={getRateRank(a.agentId)} total={agentStats.length} />
                           <span className="text-xs text-slate-700 font-medium">{a.name}</span>
                         </div>
@@ -892,7 +873,7 @@ export default function KpiAnalyticsPage() {
                     </div>
                   ))}
                   <div className="flex items-center gap-4 pt-1">
-                    {[["bg-green-400","Done"],["bg-amber-400","Pending"],["bg-purple-400","Escalated"]].map(([c,l]) => (
+                    {[["bg-green-400","Completion"],["bg-amber-400","Pending"],["bg-purple-400","Escalation"]].map(([c,l]) => (
                       <div key={l} className="flex items-center gap-1.5">
                         <span className={`w-2 h-2 rounded-sm ${c}`} />
                         <span className="text-[10px] text-slate-400">{l}</span>
@@ -906,7 +887,7 @@ export default function KpiAnalyticsPage() {
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <BarChart2 size={14} className="text-indigo-500" />
-                    <h2 className="text-sm font-semibold text-slate-800">Doc Type Volume</h2>
+                    <h2 className="text-sm font-semibold text-slate-800">Tasks Type Volume</h2>
                   </div>
                 </div>
                 <div className="space-y-3.5">
@@ -974,12 +955,12 @@ export default function KpiAnalyticsPage() {
                   <tr className="border-b border-slate-200">
                     <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Rank</th>
                     <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Agent</th>
-                    <SortTh label="Total"     col="total"     sort={sort} onSort={handleSort} />
-                    <SortTh label="Done"      col="done"      sort={sort} onSort={handleSort} />
-                    <SortTh label="Pending"   col="pending"   sort={sort} onSort={handleSort} />
-                    <SortTh label="Escalated" col="escalated" sort={sort} onSort={handleSort} />
-                    <SortTh label="Avg TAT"   col="avgTat"    sort={sort} onSort={handleSort} />
-                    <SortTh label="Rate"      col="rate"      sort={sort} onSort={handleSort} />
+                    <SortTh label="Total"      col="total"     sort={sort} onSort={handleSort} />
+                    <SortTh label="Completion" col="done"      sort={sort} onSort={handleSort} />
+                    <SortTh label="Pending"    col="pending"   sort={sort} onSort={handleSort} />
+                    <SortTh label="Escalation" col="escalated" sort={sort} onSort={handleSort} />
+                    <SortTh label="Avg TAT"    col="avgTat"    sort={sort} onSort={handleSort} />
+                    <SortTh label="Rate"       col="rate"      sort={sort} onSort={handleSort} />
                     <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Progress</th>
                   </tr>
                 </thead>
@@ -987,51 +968,48 @@ export default function KpiAnalyticsPage() {
                   {sortedAgents.length === 0 && (
                     <tr><td colSpan={9} className="px-5 py-10 text-center text-slate-400 text-sm">No data</td></tr>
                   )}
-                  {sortedAgents.map((a) => {
-                    return (
-                      <tr key={a.agentId} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                        {/* FIX: use getRateRank helper for consistent rate-based ranking */}
-                        <td className="px-4 py-3.5"><RankBadge rank={getRateRank(a.agentId)} total={agentStats.length} /></td>
-                        <td className="px-4 py-3.5">
-                          <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
-                              {a.name.slice(0, 2).toUpperCase()}
-                            </div>
-                            <span className="font-medium text-slate-700">{a.name}</span>
+                  {sortedAgents.map((a) => (
+                    <tr key={a.agentId} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3.5"><RankBadge rank={getRateRank(a.agentId)} total={agentStats.length} /></td>
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
+                            {a.name.slice(0, 2).toUpperCase()}
                           </div>
-                        </td>
-                        <td className="px-4 py-3.5 text-slate-700 font-semibold tabular-nums">{a.total}</td>
-                        <td className="px-4 py-3.5 text-green-600 font-semibold tabular-nums">{a.done}</td>
-                        <td className="px-4 py-3.5 text-amber-500 tabular-nums">{a.pending}</td>
-                        <td className="px-4 py-3.5 text-purple-500 tabular-nums">{a.escalated}</td>
-                        <td className="px-4 py-3.5 font-mono text-indigo-500 text-xs tabular-nums">{formatTat(a.avgTat)}</td>
-                        <td className="px-4 py-3.5">
-                          <span className={`font-bold tabular-nums text-sm ${a.rate >= 80 ? "text-green-600" : a.rate >= 50 ? "text-amber-500" : "text-red-500"}`}>
-                            {a.rate}%
-                          </span>
-                        </td>
-                        <td className="px-4 py-3.5 min-w-[120px]">
-                          <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full transition-all duration-700 ${a.rate >= 80 ? "bg-green-500" : a.rate >= 50 ? "bg-amber-400" : "bg-red-400"}`}
-                              style={{ width: `${a.rate}%` }} />
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                          <span className="font-medium text-slate-700">{a.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5 text-slate-700 font-semibold tabular-nums">{a.total}</td>
+                      <td className="px-4 py-3.5 text-green-600 font-semibold tabular-nums">{a.done}</td>
+                      <td className="px-4 py-3.5 text-amber-500 tabular-nums">{a.pending}</td>
+                      <td className="px-4 py-3.5 text-purple-500 tabular-nums">{a.escalated}</td>
+                      <td className="px-4 py-3.5 font-mono text-indigo-500 text-xs tabular-nums">{formatTat(a.avgTat)}</td>
+                      <td className="px-4 py-3.5">
+                        <span className={`font-bold tabular-nums text-sm ${a.rate >= 80 ? "text-green-600" : a.rate >= 50 ? "text-amber-500" : "text-red-500"}`}>
+                          {a.rate}%
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 min-w-[120px]">
+                        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full transition-all duration-700 ${a.rate >= 80 ? "bg-green-500" : a.rate >= 50 ? "bg-amber-400" : "bg-red-400"}`}
+                            style={{ width: `${a.rate}%` }} />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
           </div>
         )}
 
-        {/* ── Doc Types Tab ── */}
+        {/* ── Task Types Tab ── */}
         {tab === "docs" && (
           <div className="space-y-4">
             <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
               <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-2">
                 <BarChart2 size={14} className="text-indigo-500" />
-                <h2 className="text-sm font-semibold text-slate-800">Doc Type Performance</h2>
+                <h2 className="text-sm font-semibold text-slate-800">Task Type Performance</h2>
               </div>
               <table className="w-full text-sm">
                 <thead>

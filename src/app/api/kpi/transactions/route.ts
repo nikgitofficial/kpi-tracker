@@ -139,3 +139,4 @@ export async function DELETE(req: NextRequest) {
   await Transaction.deleteOne({ _id: id, ownerEmail: session.user.email });
   return NextResponse.json({ success: true });
 }
+

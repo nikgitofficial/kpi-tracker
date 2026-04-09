@@ -139,12 +139,12 @@ async function exportToExcel(
 
   // Global doc type summary sheet
   const docSummaryData = allDocTypes.map(dt => ({
-    "Doc Type": dt,
+    "Task Type": dt,
     "Total":    globalDocTypeCounts[dt] ?? 0,
   }));
   const wsDT = XLSX.utils.json_to_sheet(docSummaryData);
   wsDT["!cols"] = [{ wch: 28 }, { wch: 10 }];
-  XLSX.utils.book_append_sheet(wb, wsDT, "Doc Type Summary");
+  XLSX.utils.book_append_sheet(wb, wsDT, "Task Type Summary");
 
   // Daily doc type sheet
   const dailyCols = ["Date", ...allDocTypes, "Grand Total"];
@@ -161,7 +161,7 @@ async function exportToExcel(
   });
   const wsDaily = XLSX.utils.json_to_sheet(dailyRows);
   wsDaily["!cols"] = [{ wch: 14 }, ...allDocTypes.map(() => ({ wch: 14 })), { wch: 14 }];
-  XLSX.utils.book_append_sheet(wb, wsDaily, "Daily Doc Types");
+  XLSX.utils.book_append_sheet(wb, wsDaily, "Daily Task Types");
 
   // Overall summary sheet
   const totalTat    = allRows.reduce((s, r) => s + r.productivity, 0);
@@ -181,7 +181,7 @@ async function exportToExcel(
     ["Avg Pending %",    +avgPend.toFixed(2)],
     ["Avg Escalation %", +avgEsc.toFixed(2)],
     [],
-    ["Doc Type Totals"],
+    ["Task Type Totals"],
     ...allDocTypes.map(dt => [dt, globalDocTypeCounts[dt] ?? 0]),
   ];
   const ws2 = XLSX.utils.aoa_to_sheet(summaryData);
@@ -313,13 +313,13 @@ async function exportToPdf(
     doc.rect(0, 0, 297, 14, "F");
     doc.setTextColor(160, 160, 210);
     doc.setFontSize(10); doc.setFont("helvetica", "bold");
-    doc.text("Doc Type Summary", 10, 10);
+    doc.text("Task Type Summary", 10, 10);
 
     const docBody = allDocTypes.map(dt => [dt, globalDocTypeCounts[dt] ?? 0]);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (doc as any).autoTable({
       startY: 18,
-      head: [["Doc Type", "Total Count"]],
+      head: [["Task Type", "Total Count"]],
       body: docBody,
       styles: { fontSize: 8, cellPadding: 2.5, textColor: [190, 190, 210], fillColor: [22, 22, 38], lineColor: [45, 45, 70], lineWidth: 0.2 },
       headStyles: { fillColor: [35, 35, 60], textColor: [130, 130, 190], fontStyle: "bold", fontSize: 7 },
@@ -709,7 +709,7 @@ export default function ProductivityPage() {
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-green-500" />
-                  <span className="text-xs font-bold text-slate-700 uppercase tracking-widest">Doc Type Summary</span>
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-widest">Tasks Summary</span>
                 </div>
                 <span className="text-[11px] text-slate-400">{allDocTypes.length} types · {Object.values(globalDocTypeCounts).reduce((a, b) => a + b, 0)} total transactions</span>
               </div>

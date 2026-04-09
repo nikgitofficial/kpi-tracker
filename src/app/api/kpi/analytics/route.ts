@@ -23,12 +23,12 @@ export async function GET(req: NextRequest) {
 
   const txs = await Transaction.find(query).lean();
 
-  // Aggregate stats
+  // ── Summary ──
   const totalTx = txs.length;
-  const done = txs.filter((t) => t.status === "DONE").length;
-  const pending = txs.filter((t) => t.status === "PENDING").length;
-  const noDoc = txs.filter((t) => t.status === "NO_DOC").length;
-  const escalated = txs.filter((t) => t.status === "ESCALATED").length;
+  const done      = txs.filter((t) => t.status === "COMPLETION").length;
+  const pending   = txs.filter((t) => t.status === "PENDING").length;
+  const noDoc     = txs.filter((t) => t.status === "NO_DOC").length;
+  const escalated = txs.filter((t) => t.status === "ESCALATION").length;
 
   const tatsWithValue = txs.filter((t) => t.tat !== undefined && t.tat !== null);
   const avgTat = tatsWithValue.length
@@ -37,51 +37,125 @@ export async function GET(req: NextRequest) {
 
   const completionRate = totalTx ? Math.round((done / totalTx) * 100) : 0;
 
-  // Per-agent aggregation
-  const agentMap: Record<string, { name: string; total: number; done: number; pending: number; noDoc: number; escalated: number; tatSum: number; tatCount: number }> = {};
+  // ── Per-agent aggregation ──
+  const agentMap: Record<
+    string,
+    {
+      name: string;
+      total: number;
+      done: number;
+      pending: number;
+      noDoc: number;
+      escalated: number;
+      tatSum: number;
+      tatCount: number;
+    }
+  > = {};
+
   for (const tx of txs) {
     if (!agentMap[tx.agentId]) {
-      agentMap[tx.agentId] = { name: tx.agentName, total: 0, done: 0, pending: 0, noDoc: 0, escalated: 0, tatSum: 0, tatCount: 0 };
+      agentMap[tx.agentId] = {
+        name: tx.agentName,
+        total: 0,
+        done: 0,
+        pending: 0,
+        noDoc: 0,
+        escalated: 0,
+        tatSum: 0,
+        tatCount: 0,
+      };
     }
     const a = agentMap[tx.agentId];
     a.total++;
-    if (tx.status === "DONE") a.done++;
-    if (tx.status === "PENDING") a.pending++;
-    if (tx.status === "NO_DOC") a.noDoc++;
-    if (tx.status === "ESCALATED") a.escalated++;
-    if (tx.tat !== undefined && tx.tat !== null) { a.tatSum += tx.tat; a.tatCount++; }
+    if (tx.status === "COMPLETION") a.done++;
+    if (tx.status === "PENDING")    a.pending++;
+    if (tx.status === "NO_DOC")     a.noDoc++;
+    if (tx.status === "ESCALATION") a.escalated++;
+    if (tx.tat !== undefined && tx.tat !== null) {
+      a.tatSum += tx.tat;
+      a.tatCount++;
+    }
   }
 
-  const agentStats = Object.entries(agentMap).map(([id, a]) => ({
-    agentId: id,
-    name: a.name,
-    total: a.total,
-    done: a.done,
-    pending: a.pending,
-    noDoc: a.noDoc,
-    escalated: a.escalated,
-    avgTat: a.tatCount ? Math.round(a.tatSum / a.tatCount) : 0,
-    // FIX: exclude NO_DOC from rate denominator so it doesn't unfairly penalise agents
-    rate: (a.done + a.pending + a.escalated) > 0
-      ? Math.round((a.done / (a.done + a.pending + a.escalated)) * 100)
-      : 0,
-  // FIX: stable secondary sort by name so equal-rate agents don't randomly swap
-  })).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+  const agentStats = Object.entries(agentMap)
+    .map(([id, a]) => ({
+      agentId:   id,
+      name:      a.name,
+      total:     a.total,
+      done:      a.done,
+      pending:   a.pending,
+      noDoc:     a.noDoc,
+      escalated: a.escalated,
+      avgTat:    a.tatCount ? Math.round(a.tatSum / a.tatCount) : 0,
+      // Exclude NO_DOC from rate denominator
+      rate:
+        a.done + a.pending + a.escalated > 0
+          ? Math.round((a.done / (a.done + a.pending + a.escalated)) * 100)
+          : 0,
+    }))
+    // Stable secondary sort by name so equal-rate agents don't randomly swap
+    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
 
-  // Per-docType aggregation
+  // ── Per-agent daily rates (for streak alerts) ──
+  // Build date range array
+  const agentDailyRates: Record<string, { date: string; rate: number | null }[]> = {};
+
+  if (from && to) {
+    // Build list of dates in range
+    const dates: string[] = [];
+    const cur = new Date(from + "T00:00:00");
+    const end = new Date(to   + "T00:00:00");
+    while (cur <= end) {
+      dates.push(cur.toISOString().split("T")[0]);
+      cur.setDate(cur.getDate() + 1);
+    }
+
+    // Per-agent, per-day counts
+    type DayBucket = { done: number; pending: number; escalated: number };
+    const agentDayMap: Record<string, Record<string, DayBucket>> = {};
+
+    for (const tx of txs) {
+      if (!agentDayMap[tx.agentId]) agentDayMap[tx.agentId] = {};
+      if (!agentDayMap[tx.agentId][tx.date])
+        agentDayMap[tx.agentId][tx.date] = { done: 0, pending: 0, escalated: 0 };
+      const b = agentDayMap[tx.agentId][tx.date];
+      if (tx.status === "COMPLETION") b.done++;
+      if (tx.status === "PENDING")    b.pending++;
+      if (tx.status === "ESCALATION") b.escalated++;
+    }
+
+    for (const agentId of Object.keys(agentMap)) {
+      agentDailyRates[agentId] = dates.map((date) => {
+        const b = agentDayMap[agentId]?.[date];
+        if (!b) return { date, rate: null };
+        const denom = b.done + b.pending + b.escalated;
+        return {
+          date,
+          rate: denom > 0 ? Math.round((b.done / denom) * 100) : null,
+        };
+      });
+    }
+  }
+
+  // ── Per-docType aggregation ──
   const docMap: Record<string, { count: number; tatSum: number; tatCount: number }> = {};
   for (const tx of txs) {
     if (!docMap[tx.docType]) docMap[tx.docType] = { count: 0, tatSum: 0, tatCount: 0 };
     docMap[tx.docType].count++;
-    if (tx.tat !== undefined && tx.tat !== null) { docMap[tx.docType].tatSum += tx.tat; docMap[tx.docType].tatCount++; }
+    if (tx.tat !== undefined && tx.tat !== null) {
+      docMap[tx.docType].tatSum  += tx.tat;
+      docMap[tx.docType].tatCount++;
+    }
   }
-  const docTypeStats = Object.entries(docMap).map(([type, d]) => ({
-    type,
-    count: d.count,
-    avgTat: d.tatCount ? Math.round(d.tatSum / d.tatCount) : 0,
-  })).sort((a, b) => b.count - a.count);
+  const docTypeStats = Object.entries(docMap)
+    .map(([type, d]) => ({
+      type,
+      count:  d.count,
+      avgTat: d.tatCount ? Math.round(d.tatSum / d.tatCount) : 0,
+    }))
+    .sort((a, b) => b.count - a.count);
 
-  // Daily trend
+  // ── Daily trend ──
   const dailyMap: Record<string, number> = {};
   for (const tx of txs) {
     dailyMap[tx.date] = (dailyMap[tx.date] ?? 0) + 1;
@@ -95,5 +169,6 @@ export async function GET(req: NextRequest) {
     agentStats,
     docTypeStats,
     dailyTrend,
+    agentDailyRates,
   });
 }
