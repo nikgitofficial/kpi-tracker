@@ -28,9 +28,14 @@ function formatTat(sec?: number) {
   const s = (sec % 60).toString().padStart(2, "0");
   return `${h}:${m}:${s}`;
 }
+
 function now24() {
-  const d = new Date();
-  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+  return new Date().toLocaleTimeString("en-PH", {
+    timeZone: "Asia/Manila",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }
 function today() { return new Date().toISOString().split("T")[0]; }
 
@@ -155,6 +160,11 @@ export default function TxLogPage() {
   const [endTime, setEndTime] = useState(now24());
   const [endStatus, setEndStatus] = useState<Transaction["status"]>("PENDING");
   const [endNotes, setEndNotes] = useState("");
+  // ── NEW: editable fields on End Transaction panel ──
+  const [endDocType, setEndDocType] = useState("");
+  const [endCompanyName, setEndCompanyName] = useState("");
+  const [endVolume, setEndVolume] = useState("1");
+  // ──────────────────────────────────────────────────
   const [endSubmitting, setEndSubmitting] = useState(false);
   const [endSuccess, setEndSuccess] = useState("");
 
@@ -230,6 +240,11 @@ export default function TxLogPage() {
       const data = await res.json();
       setActiveTx({ _id: data.transaction._id, docType, companyName: companyName.trim(), startTime });
       setEndTime(now24()); setEndStatus("PENDING"); setEndNotes("");
+      // ── NEW: pre-populate end panel fields from the started transaction ──
+      setEndDocType(docType);
+      setEndCompanyName(companyName.trim());
+      setEndVolume(volume);
+      // ────────────────────────────────────────────────────────────────────
       setStartSuccess("Transaction started");
       setCompanyName(""); setNotes(""); setVolume("1"); setStartTime(now24());
       setTimeout(() => setStartSuccess(""), 3000);
@@ -245,7 +260,17 @@ export default function TxLogPage() {
     setEndSubmitting(true);
     await fetch("/api/kpi/transactions", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: activeTx._id, endTime, status: endStatus, notes: endNotes.trim() || undefined }),
+      body: JSON.stringify({
+        id: activeTx._id,
+        endTime,
+        status: endStatus,
+        notes: endNotes.trim() || undefined,
+        // ── NEW: send updated fields to PATCH endpoint ──
+        docType: endDocType || undefined,
+        companyName: endCompanyName.trim() || undefined,
+        volume: Number(endVolume),
+        // ────────────────────────────────────────────────
+      }),
     });
     setEndSubmitting(false);
     setEndSuccess(`Done — TAT: ${formatTat(calcTat(activeTx.startTime, endTime))}`);
@@ -464,6 +489,28 @@ export default function TxLogPage() {
                     </div>
 
                     <form onSubmit={handleEnd} className="space-y-3">
+
+                      {/* ── NEW: Type of Doc (editable) ── */}
+                      <div>
+                        <label className="block text-xs text-slate-500 mb-1">Type of Doc</label>
+                        <select value={endDocType} onChange={e => setEndDocType(e.target.value)} className={selectCls}>
+                          <option value="">Select type…</option>
+                          {docTypes.map(dt => <option key={dt._id} value={dt.name}>{dt.name}</option>)}
+                        </select>
+                      </div>
+
+                      {/* ── NEW: Company Name (editable) ── */}
+                      <div>
+                        <label className="block text-xs text-slate-500 mb-1">Company Name</label>
+                        <input value={endCompanyName} onChange={e => setEndCompanyName(e.target.value)} placeholder="Client / company" className={inputCls} />
+                      </div>
+
+                      {/* ── NEW: No. of Employees / Volume (editable) ── */}
+                      <div>
+                        <label className="block text-xs text-slate-500 mb-1">No. of Employees / Volume</label>
+                        <input type="number" min="1" value={endVolume} onChange={e => setEndVolume(e.target.value)} className={inputCls} />
+                      </div>
+
                       <div>
                         <label className="block text-xs text-slate-500 mb-1">End Time</label>
                         <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className={inputCls} />
