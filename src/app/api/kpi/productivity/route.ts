@@ -18,7 +18,6 @@ export async function GET(req: NextRequest) {
   // Fetch all agents for this owner (to get group info)
   const agents = await Agent.find({ email: session.user.email }).lean();
   
-  // Build lookup maps by both _id AND name as fallback
   const agentGroupMap: Record<string, string> = {};
   const agentNameMap: Record<string, string> = {};
 
@@ -34,21 +33,25 @@ export async function GET(req: NextRequest) {
 
   const txs = await Transaction.find(query).lean();
 
-  // Aggregate per agent
+  // Aggregate per agent (with docType breakdown)
   const agentMap: Record<string, {
     agentId: string; agentName: string; group: string;
     totalTat: number; tatCount: number;
     totalVolume: number; txCount: number;
     completion: number; pending: number; escalation: number;
+    docTypeCounts: Record<string, number>; // docType -> count
   }> = {};
+
+  // Also aggregate totals per docType across all agents, and per day
+  const globalDocTypeCounts: Record<string, number> = {};
+  // date -> docType -> count
+  const dailyDocTypeCounts: Record<string, Record<string, number>> = {};
 
   for (const tx of txs) {
     if (!agentMap[tx.agentId]) {
       agentMap[tx.agentId] = {
         agentId:    tx.agentId,
         agentName:  tx.agentName,
-        // ✅ Fixed: String() ensures ObjectId vs string comparison works,
-        //           agentNameMap fallback handles any remaining mismatches
         group:      agentGroupMap[String(tx.agentId)] ?? agentNameMap[tx.agentName] ?? "Ungrouped",
         totalTat:   0,
         tatCount:   0,
@@ -57,6 +60,7 @@ export async function GET(req: NextRequest) {
         completion: 0,
         pending:    0,
         escalation: 0,
+        docTypeCounts: {},
       };
     }
     const a = agentMap[tx.agentId];
@@ -66,6 +70,19 @@ export async function GET(req: NextRequest) {
     if (tx.status === "COMPLETION") a.completion++;
     if (tx.status === "PENDING")    a.pending++;
     if (tx.status === "ESCALATION") a.escalation++;
+
+    // Doc type per agent
+    const dt = tx.docType || "Unknown";
+    a.docTypeCounts[dt] = (a.docTypeCounts[dt] ?? 0) + 1;
+
+    // Global doc type totals
+    globalDocTypeCounts[dt] = (globalDocTypeCounts[dt] ?? 0) + 1;
+
+    // Daily doc type totals
+    if (tx.date) {
+      if (!dailyDocTypeCounts[tx.date]) dailyDocTypeCounts[tx.date] = {};
+      dailyDocTypeCounts[tx.date][dt] = (dailyDocTypeCounts[tx.date][dt] ?? 0) + 1;
+    }
   }
 
   // Build result rows
@@ -80,6 +97,7 @@ export async function GET(req: NextRequest) {
     completionRate: a.txCount ? Math.round((a.completion / a.txCount) * 100 * 100) / 100 : 0,
     pendingRate:    a.txCount ? Math.round((a.pending    / a.txCount) * 100 * 100) / 100 : 0,
     escalationRate: a.txCount ? Math.round((a.escalation / a.txCount) * 100 * 100) / 100 : 0,
+    docTypeCounts:  a.docTypeCounts,
   }));
 
   // Group them
@@ -94,10 +112,17 @@ export async function GET(req: NextRequest) {
     grouped[g].sort((a, b) => a.agentName.localeCompare(b.agentName));
   }
 
+  // Build daily doc type summary sorted by date
+  const dailySummary = Object.entries(dailyDocTypeCounts)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, counts]) => ({ date, counts }));
+
   return NextResponse.json({ 
     grouped, 
     groups: Object.keys(grouped).sort((a, b) => 
       a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
-    ) 
+    ),
+    globalDocTypeCounts,
+    dailySummary,
   });
 }

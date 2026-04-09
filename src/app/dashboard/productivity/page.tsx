@@ -2,7 +2,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Users, TrendingUp, Clock, CheckCircle2, FileText, FileSpreadsheet } from "lucide-react";
+import {
+  Users, TrendingUp, Clock, CheckCircle2, FileText, FileSpreadsheet,
+  ChevronDown, ChevronRight, Layers, Ungroup,
+} from "lucide-react";
 
 interface AgentProductivity {
   agentId:        string;
@@ -15,6 +18,12 @@ interface AgentProductivity {
   completionRate: number;
   pendingRate:    number;
   escalationRate: number;
+  docTypeCounts:  Record<string, number>;
+}
+
+interface DailySummaryEntry {
+  date:   string;
+  counts: Record<string, number>;
 }
 
 function formatHms(sec: number) {
@@ -23,6 +32,12 @@ function formatHms(sec: number) {
   const m = Math.floor((sec % 3600) / 60).toString().padStart(2, "0");
   const s = (sec % 60).toString().padStart(2, "0");
   return `${h}:${m}:${s}`;
+}
+
+function fmtDate(s: string) {
+  return new Date(s + "T00:00:00").toLocaleDateString("en-US", {
+    month: "short", day: "numeric",
+  });
 }
 
 function today()            { return new Date().toISOString().split("T")[0]; }
@@ -63,6 +78,8 @@ async function exportToExcel(
   grouped: Record<string, AgentProductivity[]>,
   groups: string[],
   allRows: AgentProductivity[],
+  globalDocTypeCounts: Record<string, number>,
+  dailySummary: DailySummaryEntry[],
   from: string,
   to: string,
 ) {
@@ -71,48 +88,82 @@ async function exportToExcel(
   const XLSX = (window as any).XLSX;
   const wb = XLSX.utils.book_new();
 
+  const allDocTypes = Object.keys(globalDocTypeCounts).sort();
+
   for (const group of groups) {
     const rows = grouped[group] ?? [];
-    const data = rows.map((r, i) => ({
-      "#":               i + 1,
-      "Agent":           r.agentName,
-      "Productivity":    formatHms(r.productivity),
-      "Avg TAT":         r.avgTat ? formatHms(r.avgTat) : "—",
-      "Total Volume":    r.totalVolume,
-      "TX Count":        r.txCount,
-      "Completion %":    +r.completionRate.toFixed(2),
-      "Pending %":       +r.pendingRate.toFixed(2),
-      "Escalation %":    +r.escalationRate.toFixed(2),
-    }));
+    const data = rows.map((r, i) => {
+      const base: Record<string, unknown> = {
+        "#":               i + 1,
+        "Agent":           r.agentName,
+        "Productivity":    formatHms(r.productivity),
+        "Avg TAT":         r.avgTat ? formatHms(r.avgTat) : "—",
+        "Total Volume":    r.totalVolume,
+        "TX Count":        r.txCount,
+        "Completion %":    +r.completionRate.toFixed(2),
+        "Pending %":       +r.pendingRate.toFixed(2),
+        "Escalation %":    +r.escalationRate.toFixed(2),
+      };
+      for (const dt of allDocTypes) {
+        base[dt] = r.docTypeCounts[dt] ?? 0;
+      }
+      return base;
+    });
 
     if (rows.length > 1) {
-      const groupTat    = rows.reduce((s, r) => s + r.productivity, 0);
-      const groupVolume = rows.reduce((s, r) => s + r.totalVolume, 0);
-      const groupTx     = rows.reduce((s, r) => s + r.txCount, 0);
-      const avgCompl    = rows.reduce((s, r) => s + r.completionRate, 0) / rows.length;
-      const avgPend     = rows.reduce((s, r) => s + r.pendingRate, 0) / rows.length;
-      const avgEsc      = rows.reduce((s, r) => s + r.escalationRate, 0) / rows.length;
-      data.push({
-        "#":            "—" as any,
+      const subtotal: Record<string, unknown> = {
+        "#":            "—",
         "Agent":        "SUBTOTAL",
-        "Productivity": formatHms(groupTat),
+        "Productivity": formatHms(rows.reduce((s, r) => s + r.productivity, 0)),
         "Avg TAT":      "—",
-        "Total Volume": groupVolume,
-        "TX Count":     groupTx,
-        "Completion %": +avgCompl.toFixed(2),
-        "Pending %":    +avgPend.toFixed(2),
-        "Escalation %": +avgEsc.toFixed(2),
-      });
+        "Total Volume": rows.reduce((s, r) => s + r.totalVolume, 0),
+        "TX Count":     rows.reduce((s, r) => s + r.txCount, 0),
+        "Completion %": +(rows.reduce((s, r) => s + r.completionRate, 0) / rows.length).toFixed(2),
+        "Pending %":    +(rows.reduce((s, r) => s + r.pendingRate, 0) / rows.length).toFixed(2),
+        "Escalation %": +(rows.reduce((s, r) => s + r.escalationRate, 0) / rows.length).toFixed(2),
+      };
+      for (const dt of allDocTypes) {
+        subtotal[dt] = rows.reduce((s, r) => s + (r.docTypeCounts[dt] ?? 0), 0);
+      }
+      data.push(subtotal as any);
     }
 
     const ws = XLSX.utils.json_to_sheet(data);
     ws["!cols"] = [
       { wch: 4 }, { wch: 22 }, { wch: 14 }, { wch: 12 },
       { wch: 14 }, { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 14 },
+      ...allDocTypes.map(() => ({ wch: 14 })),
     ];
     XLSX.utils.book_append_sheet(wb, ws, group.slice(0, 31));
   }
 
+  // Global doc type summary sheet
+  const docSummaryData = allDocTypes.map(dt => ({
+    "Doc Type": dt,
+    "Total":    globalDocTypeCounts[dt] ?? 0,
+  }));
+  const wsDT = XLSX.utils.json_to_sheet(docSummaryData);
+  wsDT["!cols"] = [{ wch: 28 }, { wch: 10 }];
+  XLSX.utils.book_append_sheet(wb, wsDT, "Doc Type Summary");
+
+  // Daily doc type sheet
+  const dailyCols = ["Date", ...allDocTypes, "Grand Total"];
+  const dailyRows = dailySummary.map(d => {
+    const row: Record<string, unknown> = { "Date": d.date };
+    let total = 0;
+    for (const dt of allDocTypes) {
+      const v = d.counts[dt] ?? 0;
+      row[dt] = v;
+      total += v;
+    }
+    row["Grand Total"] = total;
+    return row;
+  });
+  const wsDaily = XLSX.utils.json_to_sheet(dailyRows);
+  wsDaily["!cols"] = [{ wch: 14 }, ...allDocTypes.map(() => ({ wch: 14 })), { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, wsDaily, "Daily Doc Types");
+
+  // Overall summary sheet
   const totalTat    = allRows.reduce((s, r) => s + r.productivity, 0);
   const totalVolume = allRows.reduce((s, r) => s + r.totalVolume, 0);
   const totalTx     = allRows.reduce((s, r) => s + r.txCount, 0);
@@ -129,6 +180,9 @@ async function exportToExcel(
     ["Avg Completion %", +avgCompl.toFixed(2)],
     ["Avg Pending %",    +avgPend.toFixed(2)],
     ["Avg Escalation %", +avgEsc.toFixed(2)],
+    [],
+    ["Doc Type Totals"],
+    ...allDocTypes.map(dt => [dt, globalDocTypeCounts[dt] ?? 0]),
   ];
   const ws2 = XLSX.utils.aoa_to_sheet(summaryData);
   ws2["!cols"] = [{ wch: 20 }, { wch: 20 }];
@@ -141,6 +195,7 @@ async function exportToPdf(
   grouped: Record<string, AgentProductivity[]>,
   groups: string[],
   allRows: AgentProductivity[],
+  globalDocTypeCounts: Record<string, number>,
   from: string,
   to: string,
   formattedFrom: string,
@@ -199,7 +254,7 @@ async function exportToPdf(
     doc.setFont("helvetica", "normal"); doc.setTextColor(110, 110, 160);
     doc.text(
       `${rows.length} agent${rows.length !== 1 ? "s" : ""}  ·  Vol: ${groupVolume}  ·  THT: ${formatHms(groupTat)}  ·  Avg Completion: ${groupCompl.toFixed(1)}%`,
-      180, cursorY + 5, { align: "right" }
+      287, cursorY + 5, { align: "right" }
     );
     cursorY += 8;
 
@@ -237,6 +292,7 @@ async function exportToPdf(
         6: { cellWidth: 28, halign: "center", textColor: [220, 170, 60] },
         7: { cellWidth: 30, halign: "center", textColor: [160, 120, 220] },
       },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       didDrawCell: (data: any) => {
         if (data.section === "body" && data.row.index === body.length - 1 && rows.length > 1) {
           doc.setFont("helvetica", "bold");
@@ -249,14 +305,44 @@ async function exportToPdf(
     cursorY = (doc as any).lastAutoTable.finalY + 6;
   }
 
+  // Doc type summary page
+  const allDocTypes = Object.keys(globalDocTypeCounts).sort();
+  if (allDocTypes.length > 0) {
+    doc.addPage();
+    doc.setFillColor(30, 30, 46);
+    doc.rect(0, 0, 297, 14, "F");
+    doc.setTextColor(160, 160, 210);
+    doc.setFontSize(10); doc.setFont("helvetica", "bold");
+    doc.text("Doc Type Summary", 10, 10);
+
+    const docBody = allDocTypes.map(dt => [dt, globalDocTypeCounts[dt] ?? 0]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (doc as any).autoTable({
+      startY: 18,
+      head: [["Doc Type", "Total Count"]],
+      body: docBody,
+      styles: { fontSize: 8, cellPadding: 2.5, textColor: [190, 190, 210], fillColor: [22, 22, 38], lineColor: [45, 45, 70], lineWidth: 0.2 },
+      headStyles: { fillColor: [35, 35, 60], textColor: [130, 130, 190], fontStyle: "bold", fontSize: 7 },
+      alternateRowStyles: { fillColor: [28, 28, 48] },
+      columnStyles: {
+        0: { cellWidth: 80 },
+        1: { cellWidth: 30, halign: "center", textColor: [120, 160, 255], fontStyle: "bold" },
+      },
+      margin: { left: 10, right: 10 },
+    });
+  }
+
   if (allRows.length > 0) {
-    if (cursorY > 180) { doc.addPage(); cursorY = 10; }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const finalY = (doc as any).lastAutoTable?.finalY ?? 44;
     const avgPend = allRows.reduce((s, r) => s + r.pendingRate, 0) / allRows.length;
     const avgEsc  = allRows.reduce((s, r) => s + r.escalationRate, 0) / allRows.length;
 
+    if (finalY > 180) { doc.addPage(); }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (doc as any).autoTable({
-      startY: cursorY,
+      startY: Math.min(finalY + 6, 180),
       head: [["", "Agent", "Productivity (THT)", "Avg TAT", "Volume", "Completion %", "Pending %", "Escalation %"]],
       body: [["—", "OVERALL TOTAL", formatHms(totalTat), "—", totalVolume,
         `${avgCompl.toFixed(1)}%`, `${avgPend.toFixed(1)}%`, `${avgEsc.toFixed(1)}%`]],
@@ -287,14 +373,54 @@ async function exportToPdf(
   doc.save(`productivity_${from}_to_${to}.pdf`);
 }
 
+/* ─── Doc Type Breakdown Row (expandable per agent) ─── */
+function DocTypeBreakdown({ counts, allDocTypes }: { counts: Record<string, number>; allDocTypes: string[] }) {
+  const maxCount = Math.max(...Object.values(counts), 1);
+  return (
+    <tr className="bg-indigo-50/40 border-b border-indigo-100">
+      <td className="px-5 py-2.5 pl-14" colSpan={8}>
+        <div className="flex flex-wrap gap-x-6 gap-y-1.5">
+          {allDocTypes.map(dt => {
+            const count = counts[dt] ?? 0;
+            if (count === 0) return null;
+            return (
+              <div key={dt} className="flex items-center gap-2 min-w-[140px]">
+                <span className="text-[11px] text-slate-500 w-28 truncate">{dt}</span>
+                <div className="flex-1 h-1 bg-slate-200 rounded-full overflow-hidden w-16">
+                  <div
+                    className="h-full bg-indigo-400 rounded-full"
+                    style={{ width: `${(count / maxCount) * 100}%` }}
+                  />
+                </div>
+                <span className="text-[11px] font-semibold text-indigo-600 tabular-nums w-5 text-right">{count}</span>
+              </div>
+            );
+          })}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 /* ─── Main Page ─── */
 export default function ProductivityPage() {
   const [from, setFrom] = useState(daysAgo(6));
   const [to,   setTo]   = useState(today());
   const [grouped,  setGrouped]  = useState<Record<string, AgentProductivity[]>>({});
   const [groups,   setGroups]   = useState<string[]>([]);
+  const [globalDocTypeCounts, setGlobalDocTypeCounts] = useState<Record<string, number>>({});
+  const [dailySummary, setDailySummary] = useState<DailySummaryEntry[]>([]);
   const [loading,  setLoading]  = useState(false);
   const [exporting, setExporting] = useState<"pdf" | "excel" | null>(null);
+
+  // Group/Ungroup toggle
+  const [isGrouped, setIsGrouped] = useState(true);
+  // Expanded agents (showing doc type breakdown)
+  const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
+  // Collapsed groups
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  // Show/hide doc type summary section
+  const [showDocSummary, setShowDocSummary] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -302,6 +428,8 @@ export default function ProductivityPage() {
     const d   = await res.json();
     setGrouped(d.grouped ?? {});
     setGroups(d.groups   ?? []);
+    setGlobalDocTypeCounts(d.globalDocTypeCounts ?? {});
+    setDailySummary(d.dailySummary ?? []);
     setLoading(false);
   }, [from, to]);
 
@@ -314,21 +442,147 @@ export default function ProductivityPage() {
     ? allRows.reduce((s, r) => s + r.completionRate, 0) / allRows.length
     : 0;
 
+  const allDocTypes = Object.keys(globalDocTypeCounts).sort();
+
   const formattedFrom = new Date(from + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const formattedTo   = new Date(to   + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
   const canExport = allRows.length > 0;
 
+  const toggleAgent = (agentId: string) => {
+    setExpandedAgents(prev => {
+      const next = new Set(prev);
+      if (next.has(agentId)) next.delete(agentId); else next.add(agentId);
+      return next;
+    });
+  };
+
+  const toggleGroup = (group: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group); else next.add(group);
+      return next;
+    });
+  };
+
+  // Flat list of all agents (when ungrouped)
+  const flatRows = [...allRows].sort((a, b) => a.agentName.localeCompare(b.agentName));
+
   const handleExcelExport = async () => {
     setExporting("excel");
-    try { await exportToExcel(grouped, groups, allRows, from, to); }
+    try { await exportToExcel(grouped, groups, allRows, globalDocTypeCounts, dailySummary, from, to); }
     finally { setExporting(null); }
   };
 
   const handlePdfExport = async () => {
     setExporting("pdf");
-    try { await exportToPdf(grouped, groups, allRows, from, to, formattedFrom, formattedTo); }
+    try { await exportToPdf(grouped, groups, allRows, globalDocTypeCounts, from, to, formattedFrom, formattedTo); }
     finally { setExporting(null); }
+  };
+
+  /* ── Renders a group or flat agent table ── */
+  const renderAgentTable = (rows: AgentProductivity[], groupKey?: string) => {
+    const groupTat     = rows.reduce((s, r) => s + r.productivity, 0);
+    const groupVolume  = rows.reduce((s, r) => s + r.totalVolume, 0);
+    const groupAvgCompl = rows.length ? rows.reduce((s, r) => s + r.completionRate, 0) / rows.length : 0;
+
+    return (
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-200">
+              <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400 w-8"></th>
+              <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Agent</th>
+              <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-indigo-400">Productivity</th>
+              <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Avg TAT</th>
+              <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Total Volume</th>
+              <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-green-600 min-w-[140px]">Completion Rate</th>
+              <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-amber-500 min-w-[140px]">Pending Rate</th>
+              <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-purple-500 min-w-[140px]">Escalation Rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => {
+              const expanded = expandedAgents.has(row.agentId);
+              const hasDocTypes = Object.keys(row.docTypeCounts).length > 0;
+              return (
+                <>
+                  <tr
+                    key={row.agentId}
+                    onClick={() => hasDocTypes && toggleAgent(row.agentId)}
+                    className={`border-b border-slate-100 transition-colors ${
+                      hasDocTypes ? "cursor-pointer hover:bg-slate-50" : ""
+                    } ${expanded ? "bg-indigo-50/30" : ""} ${
+                      i === rows.length - 1 && !expanded ? "border-b-0" : ""
+                    }`}
+                  >
+                    <td className="px-5 py-3.5 text-slate-400 w-8">
+                      {hasDocTypes && (
+                        expanded
+                          ? <ChevronDown size={13} className="text-indigo-400" />
+                          : <ChevronRight size={13} className="text-slate-300" />
+                      )}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                          {row.agentName.slice(0, 2).toUpperCase()}
+                        </div>
+                        <span className="text-slate-700 font-medium">{row.agentName}</span>
+                      </div>
+                    </td>
+                    <td className="text-center px-4 py-3.5 font-mono text-indigo-500 font-semibold text-xs">
+                      {formatHms(row.productivity)}
+                    </td>
+                    <td className="text-center px-4 py-3.5 font-mono text-slate-500 text-xs">
+                      {row.avgTat ? formatHms(row.avgTat) : "—"}
+                    </td>
+                    <td className="text-center px-4 py-3.5 text-slate-700 font-semibold">
+                      {row.totalVolume}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <RateBar value={row.completionRate} color="bg-green-500" />
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <RateBar value={row.pendingRate} color="bg-amber-400" />
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <RateBar value={row.escalationRate} color="bg-purple-400" />
+                    </td>
+                  </tr>
+                  {expanded && hasDocTypes && (
+                    <DocTypeBreakdown
+                      key={`${row.agentId}-dt`}
+                      counts={row.docTypeCounts}
+                      allDocTypes={allDocTypes}
+                    />
+                  )}
+                </>
+              );
+            })}
+
+            {rows.length > 1 && (
+              <tr className="bg-slate-50 border-t border-slate-200">
+                <td className="px-5 py-2.5 w-8"></td>
+                <td className="px-5 py-2.5 text-xs font-bold text-slate-400 uppercase tracking-wider">Subtotal</td>
+                <td className="text-center px-4 py-2.5 font-mono text-indigo-500 font-bold text-xs">{formatHms(groupTat)}</td>
+                <td className="text-center px-4 py-2.5 text-slate-300 text-xs">—</td>
+                <td className="text-center px-4 py-2.5 text-slate-700 font-bold">{groupVolume}</td>
+                <td className="px-4 py-2.5">
+                  <RateBar value={groupAvgCompl} color="bg-green-500" />
+                </td>
+                <td className="px-4 py-2.5">
+                  <RateBar value={rows.length ? rows.reduce((s, r) => s + r.pendingRate, 0) / rows.length : 0} color="bg-amber-400" />
+                </td>
+                <td className="px-4 py-2.5">
+                  <RateBar value={rows.length ? rows.reduce((s, r) => s + r.escalationRate, 0) / rows.length : 0} color="bg-purple-400" />
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    );
   };
 
   return (
@@ -343,7 +597,7 @@ export default function ProductivityPage() {
             <p className="text-slate-400 text-sm mt-0.5">{formattedFrom} — {formattedTo}</p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
             <span className="text-xs text-slate-400">FROM</span>
             <input
               type="date"
@@ -363,6 +617,22 @@ export default function ProductivityPage() {
               className="px-3 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-500 text-xs font-semibold hover:bg-indigo-100 transition-colors"
             >
               Today
+            </button>
+
+            <div className="h-6 w-px bg-slate-200 mx-1" />
+
+            {/* Group / Ungroup toggle */}
+            <button
+              onClick={() => setIsGrouped(g => !g)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
+                isGrouped
+                  ? "bg-slate-700 border-slate-700 text-white hover:bg-slate-800"
+                  : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+              }`}
+              title={isGrouped ? "Switch to ungrouped view" : "Switch to grouped view"}
+            >
+              {isGrouped ? <Layers size={13} /> : <Ungroup size={13} />}
+              {isGrouped ? "Grouped" : "Ungrouped"}
             </button>
 
             <div className="h-6 w-px bg-slate-200 mx-1" />
@@ -400,10 +670,10 @@ export default function ProductivityPage() {
         {/* ── Summary cards ── */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
           {[
-            { icon: Users,        label: "Total Agents",     value: allRows.length,                 color: "text-slate-700"  },
-            { icon: TrendingUp,   label: "Total Volume",     value: totalVolume,                    color: "text-indigo-600" },
-            { icon: Clock,        label: "Total Handle Time",value: formatHms(totalTat),            color: "text-indigo-600" },
-            { icon: CheckCircle2, label: "Avg Completion",   value: `${avgCompletion.toFixed(1)}%`, color: "text-green-600"  },
+            { icon: Users,        label: "Total Agents",      value: allRows.length,                 color: "text-slate-700"  },
+            { icon: TrendingUp,   label: "Total Volume",      value: totalVolume,                    color: "text-indigo-600" },
+            { icon: Clock,        label: "Total Handle Time", value: formatHms(totalTat),            color: "text-indigo-600" },
+            { icon: CheckCircle2, label: "Avg Completion",    value: `${avgCompletion.toFixed(1)}%`, color: "text-green-600"  },
           ].map(s => (
             <div key={s.label} className="bg-white border border-slate-200 rounded-2xl px-4 py-3.5 flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">
@@ -429,18 +699,131 @@ export default function ProductivityPage() {
           </div>
         )}
 
-        {/* ── Groups ── */}
-        {!loading && groups.map(group => {
+        {/* ── Doc Type Summary Panel ── */}
+        {!loading && allDocTypes.length > 0 && (
+          <div className="mb-5 bg-white border border-slate-200 rounded-2xl overflow-hidden">
+            <button
+              onClick={() => setShowDocSummary(s => !s)}
+              className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-slate-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-green-500" />
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-widest">Doc Type Summary</span>
+                </div>
+                <span className="text-[11px] text-slate-400">{allDocTypes.length} types · {Object.values(globalDocTypeCounts).reduce((a, b) => a + b, 0)} total transactions</span>
+              </div>
+              <ChevronDown
+                size={14}
+                className={`text-slate-400 transition-transform ${showDocSummary ? "rotate-180" : ""}`}
+              />
+            </button>
+
+            {showDocSummary && (
+              <div className="border-t border-slate-200">
+                {/* Global totals row */}
+                <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Overall Totals</p>
+                  <div className="flex flex-wrap gap-3">
+                    {allDocTypes.map(dt => {
+                      const count = globalDocTypeCounts[dt] ?? 0;
+                      const maxCount = Math.max(...Object.values(globalDocTypeCounts), 1);
+                      return (
+                        <div key={dt} className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-1.5 min-w-[140px]">
+                          <div className="flex-1">
+                            <p className="text-[11px] text-slate-500 truncate">{dt}</p>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <div className="flex-1 h-1 bg-slate-100 rounded-full overflow-hidden">
+                                <div className="h-full bg-green-400 rounded-full" style={{ width: `${(count / maxCount) * 100}%` }} />
+                              </div>
+                              <span className="text-xs font-bold text-slate-700 tabular-nums">{count}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Daily breakdown */}
+                {dailySummary.length > 0 && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50">
+                          <th className="text-left px-5 py-2.5 text-[11px] font-semibold uppercase tracking-widest text-slate-400 sticky left-0 bg-slate-50 min-w-[90px]">Date</th>
+                          {allDocTypes.map(dt => (
+                            <th key={dt} className="text-center px-3 py-2.5 text-[11px] font-semibold text-slate-400 whitespace-nowrap min-w-[90px]">{dt}</th>
+                          ))}
+                          <th className="text-center px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest text-indigo-400 min-w-[70px]">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dailySummary.map((day, i) => {
+                          const dayTotal = Object.values(day.counts).reduce((a, b) => a + b, 0);
+                          return (
+                            <tr
+                              key={day.date}
+                              className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${
+                                i === dailySummary.length - 1 ? "border-b-0" : ""
+                              }`}
+                            >
+                              <td className="px-5 py-2.5 font-medium text-slate-600 sticky left-0 bg-white">{fmtDate(day.date)}</td>
+                              {allDocTypes.map(dt => {
+                                const count = day.counts[dt] ?? 0;
+                                return (
+                                  <td key={dt} className="text-center px-3 py-2.5 tabular-nums">
+                                    {count > 0
+                                      ? <span className="font-semibold text-slate-700">{count}</span>
+                                      : <span className="text-slate-300">—</span>
+                                    }
+                                  </td>
+                                );
+                              })}
+                              <td className="text-center px-4 py-2.5 font-bold text-indigo-600 tabular-nums">{dayTotal}</td>
+                            </tr>
+                          );
+                        })}
+                        {/* Column totals row */}
+                        <tr className="bg-slate-50 border-t border-slate-200">
+                          <td className="px-5 py-2.5 text-xs font-bold text-slate-500 uppercase sticky left-0 bg-slate-50">Total</td>
+                          {allDocTypes.map(dt => (
+                            <td key={dt} className="text-center px-3 py-2.5 font-bold text-slate-700 tabular-nums">
+                              {globalDocTypeCounts[dt] ?? 0}
+                            </td>
+                          ))}
+                          <td className="text-center px-4 py-2.5 font-bold text-indigo-600 tabular-nums">
+                            {Object.values(globalDocTypeCounts).reduce((a, b) => a + b, 0)}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── GROUPED view ── */}
+        {!loading && isGrouped && groups.map(group => {
           const rows         = grouped[group] ?? [];
           const groupVolume  = rows.reduce((s, r) => s + r.totalVolume, 0);
           const groupTat     = rows.reduce((s, r) => s + r.productivity, 0);
           const groupAvgCompl = rows.length ? rows.reduce((s, r) => s + r.completionRate, 0) / rows.length : 0;
+          const collapsed    = collapsedGroups.has(group);
 
           return (
             <div key={group} className="mb-5">
-              {/* Group header */}
-              <div className="flex items-center gap-3 mb-2">
+              <button
+                onClick={() => toggleGroup(group)}
+                className="flex items-center gap-3 mb-2 w-full text-left"
+              >
                 <div className="flex items-center gap-2">
+                  {collapsed
+                    ? <ChevronRight size={13} className="text-slate-400" />
+                    : <ChevronDown size={13} className="text-indigo-500" />
+                  }
                   <div className="w-2 h-2 rounded-full bg-indigo-500" />
                   <h2 className="text-xs font-bold text-slate-700 uppercase tracking-widest">{group}</h2>
                 </div>
@@ -451,81 +834,27 @@ export default function ProductivityPage() {
                   <span>Total THT: <span className="text-indigo-500 font-mono font-semibold">{formatHms(groupTat)}</span></span>
                   <span>Avg Completion: <span className="text-green-600 font-semibold">{groupAvgCompl.toFixed(1)}%</span></span>
                 </div>
-              </div>
+              </button>
 
-              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-200">
-                      <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Agent</th>
-                      <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-indigo-400">Productivity</th>
-                      <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Avg TAT</th>
-                      <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Total Volume</th>
-                      <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-green-600 min-w-[140px]">Completion Rate</th>
-                      <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-amber-500 min-w-[140px]">Pending Rate</th>
-                      <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-purple-500 min-w-[140px]">Escalation Rate</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((row, i) => (
-                      <tr
-                        key={row.agentId}
-                        className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${
-                          i === rows.length - 1 ? "border-b-0" : ""
-                        }`}
-                      >
-                        <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                              {row.agentName.slice(0, 2).toUpperCase()}
-                            </div>
-                            <span className="text-slate-700 font-medium">{row.agentName}</span>
-                          </div>
-                        </td>
-                        <td className="text-center px-4 py-3.5 font-mono text-indigo-500 font-semibold text-xs">
-                          {formatHms(row.productivity)}
-                        </td>
-                        <td className="text-center px-4 py-3.5 font-mono text-slate-500 text-xs">
-                          {row.avgTat ? formatHms(row.avgTat) : "—"}
-                        </td>
-                        <td className="text-center px-4 py-3.5 text-slate-700 font-semibold">
-                          {row.totalVolume}
-                        </td>
-                        <td className="px-4 py-3.5">
-                          <RateBar value={row.completionRate} color="bg-green-500" />
-                        </td>
-                        <td className="px-4 py-3.5">
-                          <RateBar value={row.pendingRate} color="bg-amber-400" />
-                        </td>
-                        <td className="px-4 py-3.5">
-                          <RateBar value={row.escalationRate} color="bg-purple-400" />
-                        </td>
-                      </tr>
-                    ))}
-
-                    {rows.length > 1 && (
-                      <tr className="bg-slate-50 border-t border-slate-200">
-                        <td className="px-5 py-2.5 text-xs font-bold text-slate-400 uppercase tracking-wider">Subtotal</td>
-                        <td className="text-center px-4 py-2.5 font-mono text-indigo-500 font-bold text-xs">{formatHms(groupTat)}</td>
-                        <td className="text-center px-4 py-2.5 text-slate-300 text-xs">—</td>
-                        <td className="text-center px-4 py-2.5 text-slate-700 font-bold">{groupVolume}</td>
-                        <td className="px-4 py-2.5">
-                          <RateBar value={groupAvgCompl} color="bg-green-500" />
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <RateBar value={rows.length ? rows.reduce((s, r) => s + r.pendingRate, 0) / rows.length : 0} color="bg-amber-400" />
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <RateBar value={rows.length ? rows.reduce((s, r) => s + r.escalationRate, 0) / rows.length : 0} color="bg-purple-400" />
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              {!collapsed && renderAgentTable(rows, group)}
             </div>
           );
         })}
+
+        {/* ── UNGROUPED view ── */}
+        {!loading && !isGrouped && flatRows.length > 0 && (
+          <div className="mb-5">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-slate-400" />
+                <h2 className="text-xs font-bold text-slate-700 uppercase tracking-widest">All Agents</h2>
+              </div>
+              <div className="flex-1 h-px bg-slate-200" />
+              <span className="text-[11px] text-slate-400">{flatRows.length} agents</span>
+            </div>
+            {renderAgentTable(flatRows)}
+          </div>
+        )}
 
         {/* ── Overall totals ── */}
         {!loading && allRows.length > 0 && (
@@ -533,6 +862,7 @@ export default function ProductivityPage() {
             <table className="w-full text-sm">
               <tbody>
                 <tr>
+                  <td className="px-5 py-3.5 w-8"></td>
                   <td className="px-5 py-3.5 font-bold text-slate-700 uppercase tracking-wider text-xs">Overall Total</td>
                   <td className="text-center px-4 py-3.5 font-mono text-indigo-500 font-bold text-xs">{formatHms(totalTat)}</td>
                   <td className="text-center px-4 py-3.5 text-slate-300 text-xs">—</td>

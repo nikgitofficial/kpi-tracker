@@ -28,15 +28,28 @@ export async function POST(req: NextRequest) {
   if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { agentId, agentName, docType, companyName, volume, startTime, date, status, notes } = body;
+  const {
+    agentId, agentName, docType, companyName, volume,
+    date, status, notes,
+    startEpoch,      // unix ms — replaces startTime string
+    elapsedSeconds,  // always 0 on create
+  } = body;
 
-  if (!agentId || !agentName || !docType || !companyName || !volume || !startTime || !date) {
+  if (!agentId || !agentName || !docType || !companyName || !volume || !date) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
   await connectDB();
 
   const txId = `TX${Date.now()}`;
+
+  // Keep startTime as a human-readable string for legacy display / export
+  const startTime = new Date(startEpoch ?? Date.now()).toLocaleTimeString("en-PH", {
+    timeZone: "Asia/Manila",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 
   const tx = await Transaction.create({
     txId,
@@ -46,49 +59,64 @@ export async function POST(req: NextRequest) {
     companyName,
     volume: Number(volume),
     startTime,
+    startEpoch: startEpoch ?? Date.now(),
     date,
     status: status || "PENDING",
     notes: notes || undefined,
     ownerEmail: session.user.email,
+    elapsedSeconds: elapsedSeconds ?? 0,
+    pausedAt: null,
   });
 
   return NextResponse.json({ transaction: tx }, { status: 201 });
 }
 
-// PATCH /api/kpi/transactions — update status/endTime/notes/docType/companyName/volume/startTime
+// PATCH /api/kpi/transactions — update timer state, status, end, or metadata
 export async function PATCH(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { id, status, endTime, notes, docType, companyName, volume, startTime } = await req.json();
+  const body = await req.json();
+  const {
+    id,
+    // timer fields
+    elapsedSeconds,
+    pausedAt,        // null = running, number = unix ms when paused
+    tat,             // final elapsed seconds, set on end
+    endEpoch,        // unix ms when ended
+    // end fields
+    endTime,         // human-readable HH:mm string for display
+    status,
+    notes,
+    // editable metadata
+    docType,
+    companyName,
+    volume,
+    startTime,       // legacy string, only set in edit modal
+  } = body;
+
   if (!id) return NextResponse.json({ error: "Transaction ID required" }, { status: 400 });
 
   await connectDB();
 
   const updateData: Record<string, unknown> = {};
 
+  // Timer state
+  if (elapsedSeconds !== undefined) updateData.elapsedSeconds = Number(elapsedSeconds);
+  if (pausedAt !== undefined) updateData.pausedAt = pausedAt; // null or number
+  if (tat !== undefined) updateData.tat = Number(tat);
+  if (endEpoch !== undefined) updateData.endEpoch = endEpoch;
+
+  // End / status
+  if (endTime) updateData.endTime = endTime;
   if (status) updateData.status = status;
   if (notes !== undefined) updateData.notes = notes;
+
+  // Editable metadata
   if (docType) updateData.docType = docType;
   if (companyName) updateData.companyName = companyName;
   if (volume !== undefined) updateData.volume = Number(volume);
   if (startTime) updateData.startTime = startTime;
-
-  if (endTime) {
-    updateData.endTime = endTime;
-
-    const existing = await Transaction.findOne(
-      { _id: id, ownerEmail: session.user.email }
-    ).lean<{ startTime: string }>();
-
-    if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
-
-    const resolvedStart = (startTime as string) || existing.startTime;
-    const [sh, sm] = resolvedStart.split(":").map(Number);
-    const [eh, em] = endTime.split(":").map(Number);
-    const tatSec = (eh * 60 + em - (sh * 60 + sm)) * 60;
-    updateData.tat = tatSec >= 0 ? tatSec : 0;
-  }
 
   const tx = await Transaction.findOneAndUpdate(
     { _id: id, ownerEmail: session.user.email },
