@@ -55,12 +55,12 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ transaction: tx }, { status: 201 });
 }
 
-// PATCH /api/kpi/transactions — update status/endTime/notes
+// PATCH /api/kpi/transactions — update status/endTime/notes/docType/companyName/volume/startTime
 export async function PATCH(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { id, status, endTime, notes } = await req.json();
+  const { id, status, endTime, notes, docType, companyName, volume, startTime } = await req.json();
   if (!id) return NextResponse.json({ error: "Transaction ID required" }, { status: 400 });
 
   await connectDB();
@@ -69,17 +69,22 @@ export async function PATCH(req: NextRequest) {
 
   if (status) updateData.status = status;
   if (notes !== undefined) updateData.notes = notes;
+  if (docType) updateData.docType = docType;
+  if (companyName) updateData.companyName = companyName;
+  if (volume !== undefined) updateData.volume = Number(volume);
+  if (startTime) updateData.startTime = startTime;
 
   if (endTime) {
     updateData.endTime = endTime;
 
-  const existing = await Transaction.findOne(
-  { _id: id, ownerEmail: session.user.email }
-).lean<{ startTime: string }>();
+    const existing = await Transaction.findOne(
+      { _id: id, ownerEmail: session.user.email }
+    ).lean<{ startTime: string }>();
 
-if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    const [sh, sm] = existing.startTime.split(":").map(Number);
+    const resolvedStart = (startTime as string) || existing.startTime;
+    const [sh, sm] = resolvedStart.split(":").map(Number);
     const [eh, em] = endTime.split(":").map(Number);
     const tatSec = (eh * 60 + em - (sh * 60 + sm)) * 60;
     updateData.tat = tatSec >= 0 ? tatSec : 0;

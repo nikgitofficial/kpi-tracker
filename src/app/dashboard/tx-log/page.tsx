@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Play, Square, Plus, Trash2, CheckCircle2, Clock, AlertTriangle, Users, Tag, FileText, FileSpreadsheet } from "lucide-react";
+import { Play, Square, Plus, Trash2, Pencil, CheckCircle2, Clock, AlertTriangle, Users, Tag, FileText, FileSpreadsheet } from "lucide-react";
 
 /* ─── Types ─── */
 interface Agent { _id: string; name: string; group?: string }
@@ -160,13 +160,25 @@ export default function TxLogPage() {
   const [endTime, setEndTime] = useState(now24());
   const [endStatus, setEndStatus] = useState<Transaction["status"]>("PENDING");
   const [endNotes, setEndNotes] = useState("");
-  // ── NEW: editable fields on End Transaction panel ──
+  // ── Editable fields on End Transaction panel ──
   const [endDocType, setEndDocType] = useState("");
   const [endCompanyName, setEndCompanyName] = useState("");
   const [endVolume, setEndVolume] = useState("1");
-  // ──────────────────────────────────────────────────
+  // ─────────────────────────────────────────────
   const [endSubmitting, setEndSubmitting] = useState(false);
   const [endSuccess, setEndSuccess] = useState("");
+
+  // ── Edit modal state ──
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [editDocType, setEditDocType] = useState("");
+  const [editCompanyName, setEditCompanyName] = useState("");
+  const [editVolume, setEditVolume] = useState("1");
+  const [editStartTime, setEditStartTime] = useState("");
+  const [editEndTime, setEditEndTime] = useState("");
+  const [editStatus, setEditStatus] = useState<Transaction["status"]>("PENDING");
+  const [editNotes, setEditNotes] = useState("");
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  // ─────────────────────
 
   const [showSettings, setShowSettings] = useState(false);
   const [newAgent, setNewAgent] = useState("");
@@ -240,11 +252,11 @@ export default function TxLogPage() {
       const data = await res.json();
       setActiveTx({ _id: data.transaction._id, docType, companyName: companyName.trim(), startTime });
       setEndTime(now24()); setEndStatus("PENDING"); setEndNotes("");
-      // ── NEW: pre-populate end panel fields from the started transaction ──
+      // ── Pre-populate end panel fields from the started transaction ──
       setEndDocType(docType);
       setEndCompanyName(companyName.trim());
       setEndVolume(volume);
-      // ────────────────────────────────────────────────────────────────────
+      // ────────────────────────────────────────────────────────────────
       setStartSuccess("Transaction started");
       setCompanyName(""); setNotes(""); setVolume("1"); setStartTime(now24());
       setTimeout(() => setStartSuccess(""), 3000);
@@ -265,11 +277,11 @@ export default function TxLogPage() {
         endTime,
         status: endStatus,
         notes: endNotes.trim() || undefined,
-        // ── NEW: send updated fields to PATCH endpoint ──
+        // ── Send updated fields to PATCH endpoint ──
         docType: endDocType || undefined,
         companyName: endCompanyName.trim() || undefined,
         volume: Number(endVolume),
-        // ────────────────────────────────────────────────
+        // ───────────────────────────────────────────
       }),
     });
     setEndSubmitting(false);
@@ -277,6 +289,42 @@ export default function TxLogPage() {
     setActiveTx(null); fetchTx();
     setTimeout(() => setEndSuccess(""), 4000);
   };
+
+  // ── Edit handlers ──
+  const openEdit = (tx: Transaction) => {
+    setEditingTx(tx);
+    setEditDocType(tx.docType);
+    setEditCompanyName(tx.companyName);
+    setEditVolume(String(tx.volume));
+    setEditStartTime(tx.startTime);
+    setEditEndTime(tx.endTime ?? "");
+    setEditStatus(tx.status);
+    setEditNotes(tx.notes ?? "");
+  };
+
+  const handleEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTx) return;
+    setEditSubmitting(true);
+    await fetch("/api/kpi/transactions", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: editingTx._id,
+        docType: editDocType,
+        companyName: editCompanyName.trim(),
+        volume: Number(editVolume),
+        startTime: editStartTime,
+        endTime: editEndTime || undefined,
+        status: editStatus,
+        notes: editNotes.trim() || undefined,
+      }),
+    });
+    setEditSubmitting(false);
+    setEditingTx(null);
+    fetchTx();
+  };
+  // ──────────────────
 
   function calcTat(start: string, end: string) {
     const [sh, sm] = start.split(":").map(Number);
@@ -357,9 +405,8 @@ export default function TxLogPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <span className="truncate font-medium block" style={{ fontFamily: "Calibri, sans-serif" }}>
-  {agent.name}
-</span>
-
+                  {agent.name}
+                </span>
                 {agent.group && <span className="text-[10px] text-slate-400" style={{ fontFamily: "Calibri, sans-serif" }}>{agent.group}</span>}
               </div>
             </button>
@@ -490,7 +537,7 @@ export default function TxLogPage() {
 
                     <form onSubmit={handleEnd} className="space-y-3">
 
-                      {/* ── NEW: Type of Doc (editable) ── */}
+                      {/* Type of Doc (editable) */}
                       <div>
                         <label className="block text-xs text-slate-500 mb-1">Type of Doc</label>
                         <select value={endDocType} onChange={e => setEndDocType(e.target.value)} className={selectCls}>
@@ -499,13 +546,13 @@ export default function TxLogPage() {
                         </select>
                       </div>
 
-                      {/* ── NEW: Company Name (editable) ── */}
+                      {/* Company Name (editable) */}
                       <div>
                         <label className="block text-xs text-slate-500 mb-1">Company Name</label>
                         <input value={endCompanyName} onChange={e => setEndCompanyName(e.target.value)} placeholder="Client / company" className={inputCls} />
                       </div>
 
-                      {/* ── NEW: No. of Employees / Volume (editable) ── */}
+                      {/* No. of Employees / Volume (editable) */}
                       <div>
                         <label className="block text-xs text-slate-500 mb-1">No. of Employees / Volume</label>
                         <input type="number" min="1" value={endVolume} onChange={e => setEndVolume(e.target.value)} className={inputCls} />
@@ -667,12 +714,22 @@ export default function TxLogPage() {
                         <td className="px-4 py-3"><StatusBadge status={tx.status} /></td>
                         <td className="px-4 py-3 text-slate-400 text-xs max-w-[100px] truncate">{tx.notes ?? "—"}</td>
                         <td className="px-4 py-3">
-                          <button
-                            onClick={() => deleteTx(tx._id)}
-                            className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-all"
-                          >
-                            <Trash2 size={13} />
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => openEdit(tx)}
+                              className="text-slate-300 hover:text-indigo-500 transition-colors"
+                              title="Edit"
+                            >
+                              <Pencil size={13} />
+                            </button>
+                            <button
+                              onClick={() => deleteTx(tx._id)}
+                              className="text-slate-300 hover:text-red-500 transition-colors"
+                              title="Delete"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -753,6 +810,75 @@ export default function TxLogPage() {
           </div>
         </div>
       )}
+
+      {/* ── Edit Transaction modal ── */}
+      {editingTx && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm" onClick={() => setEditingTx(null)}>
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 w-[420px] shadow-xl shadow-slate-200/60" onClick={e => e.stopPropagation()}>
+            <h2 className="text-base font-semibold text-slate-900 mb-4">Edit Transaction</h2>
+
+            <form onSubmit={handleEdit} className="space-y-3">
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Type of Doc</label>
+                <select value={editDocType} onChange={e => setEditDocType(e.target.value)} className={selectCls}>
+                  <option value="">Select type…</option>
+                  {docTypes.map(dt => <option key={dt._id} value={dt.name}>{dt.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Company Name</label>
+                <input value={editCompanyName} onChange={e => setEditCompanyName(e.target.value)} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">No. of Employees / Volume</label>
+                <input type="number" min="1" value={editVolume} onChange={e => setEditVolume(e.target.value)} className={inputCls} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">Start Time</label>
+                  <input type="time" value={editStartTime} onChange={e => setEditStartTime(e.target.value)} className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">End Time</label>
+                  <input type="time" value={editEndTime} onChange={e => setEditEndTime(e.target.value)} className={inputCls} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1.5">Status</label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(["COMPLETION", "PENDING", "ESCALATION"] as const).map(s => {
+                    const cfg = STATUS_CONFIG[s];
+                    return (
+                      <button key={s} type="button" onClick={() => setEditStatus(s)}
+                        className={`py-1.5 rounded-lg border text-xs font-semibold transition-all ${
+                          editStatus === s ? `${cfg.color} ${cfg.bg}` : "border-slate-200 text-slate-400 hover:border-slate-300 hover:bg-slate-50"
+                        }`}>
+                        {cfg.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Notes (optional)</label>
+                <textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} rows={2} className={`${inputCls} resize-none`} />
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={() => setEditingTx(null)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-sm font-medium hover:bg-slate-200 transition-colors">
+                  Cancel
+                </button>
+                <button type="submit" disabled={editSubmitting}
+                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors disabled:opacity-50">
+                  {editSubmitting ? "Saving…" : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
