@@ -178,6 +178,8 @@ export default function TxLogPage() {
   const [editStatus, setEditStatus] = useState<Transaction["status"]>("PENDING");
   const [editNotes, setEditNotes] = useState("");
   const [editSubmitting, setEditSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  
   // ─────────────────────
 
   const [showSettings, setShowSettings] = useState(false);
@@ -185,6 +187,8 @@ export default function TxLogPage() {
   const [newAgentGroup, setNewAgentGroup] = useState("");
   const [newDocType, setNewDocType] = useState("");
   const [exporting, setExporting] = useState<"pdf" | "excel" | null>(null);
+
+  
 
   useEffect(() => {
     fetch("/api/kpi/agents").then(r => r.json()).then(d => {
@@ -333,10 +337,12 @@ export default function TxLogPage() {
     return sec >= 0 ? sec : 0;
   }
 
-  const deleteTx = async (id: string) => {
-    await fetch("/api/kpi/transactions", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
-    fetchTx();
-  };
+  const deleteTx = async () => {
+  if (!deletingId) return;
+  await fetch("/api/kpi/transactions", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: deletingId }) });
+  setDeletingId(null);
+  fetchTx();
+};
 
   const addAgent = async () => {
     if (!newAgent.trim()) return;
@@ -723,12 +729,12 @@ export default function TxLogPage() {
                               <Pencil size={13} />
                             </button>
                             <button
-                              onClick={() => deleteTx(tx._id)}
-                              className="text-slate-300 hover:text-red-500 transition-colors"
-                              title="Delete"
-                            >
-                              <Trash2 size={13} />
-                            </button>
+  onClick={() => setDeletingId(tx._id)}
+  className="text-slate-300 hover:text-red-500 transition-colors"
+  title="Delete"
+>
+  <Trash2 size={13} />
+</button>
                           </div>
                         </td>
                       </tr>
@@ -878,6 +884,36 @@ export default function TxLogPage() {
           </div>
         </div>
       )}
+      {/* ── Delete Confirmation modal ── */}
+{deletingId && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm" onClick={() => setDeletingId(null)}>
+    <div className="bg-white border border-slate-200 rounded-2xl p-6 w-[360px] shadow-xl shadow-slate-200/60" onClick={e => e.stopPropagation()}>
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-9 h-9 rounded-xl bg-red-50 border border-red-200 flex items-center justify-center flex-shrink-0">
+          <Trash2 size={15} className="text-red-500" />
+        </div>
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900">Delete Transaction</h2>
+          <p className="text-xs text-slate-400 mt-0.5">This action cannot be undone.</p>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <button
+          onClick={() => setDeletingId(null)}
+          className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-sm font-medium hover:bg-slate-200 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={deleteTx}
+          className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-semibold transition-colors"
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
     </div>
   );
