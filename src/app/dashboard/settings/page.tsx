@@ -1,3 +1,4 @@
+// app/settings/page.tsx (or wherever your SettingsPage is)
 "use client";
 
 import { useState } from "react";
@@ -6,6 +7,7 @@ import {
   CheckCircle2, AlertTriangle, Monitor, Moon, Sun,
   ChevronDown,
 } from "lucide-react";
+import { useTheme } from "@/providers/ThemeProvider"; // ADD THIS IMPORT
 
 const TIMEZONES = [
   "Asia/Manila", "Asia/Singapore", "Asia/Tokyo",
@@ -17,6 +19,9 @@ type Theme = "system" | "light" | "dark";
 type SidebarBehavior = "expanded" | "collapsed" | "auto";
 
 export default function SettingsPage() {
+  /* ── Theme ── */
+  const { theme, setTheme, resolvedTheme } = useTheme(); // ADD THIS LINE - REPLACES local theme state
+
   /* ── General ── */
   const [displayName, setDisplayName]   = useState("Herb Joy");
   const [timezone, setTimezone]         = useState("Asia/Manila");
@@ -24,7 +29,7 @@ export default function SettingsPage() {
   const [generalSaved, setGeneralSaved] = useState(false);
 
   /* ── Appearance ── */
-  const [theme, setTheme]                         = useState<Theme>("system");
+  // REMOVE this line: const [theme, setTheme] = useState<Theme>("system");
   const [sidebarBehavior, setSidebarBehavior]     = useState<SidebarBehavior>("expanded");
   const [compactMode, setCompactMode]             = useState(false);
   const [appearanceSaved, setAppearanceSaved]     = useState(false);

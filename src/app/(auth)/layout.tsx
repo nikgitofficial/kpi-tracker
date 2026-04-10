@@ -47,11 +47,14 @@ export default async function AuthLayout({
               priority
             />
           </div>
-          <span className="font-semibold text-base tracking-tight">
-  <span className="text-[#2EA8FF]">K</span>
-  <span className="text-[#FF4D4D]">P</span>
-  <span className="text-[#F4C542]">I</span>
-  <span className="text-[#2EA8FF]">-HERBJOY</span>
+       <span className="inline-flex flex-col leading-none select-none">
+  <span className="flex items-baseline gap-[1px]">
+    <span className="font-black text-lg tracking-tight" style={{ color: "#2EA8FF" }}>HERB</span>
+    <span className="font-black text-lg tracking-tight" style={{ color: "#FF4D4D" }}>JOY</span>
+  </span>
+  <span className="font-medium text-[9px] tracking-[0.15em] uppercase" style={{ color: "#F4C542" }}>
+    Productivity Tracker
+  </span>
 </span>
         </Link>
 

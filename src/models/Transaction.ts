@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document, model, models } from "mongoose";
 
 export type TxStatus = "PENDING" | "COMPLETION" | "ESCALATION";
+export type TaskCategory = "Production" | "Non-Production";
 
 export interface ITransaction extends Document {
   txId: string;
@@ -10,16 +11,17 @@ export interface ITransaction extends Document {
   companyName: string;
   volume: number;
   startTime: string;
-  startEpoch?: number;   // ← add
+  startEpoch?: number;
   endTime?: string;
-  endEpoch?: number;     // ← add
+  endEpoch?: number;
   tat?: number;
   status: TxStatus;
   notes?: string;
   date: string;
   ownerEmail: string;
-  elapsedSeconds?: number;  // ← add
-  pausedAt?: number | null; // ← add
+  elapsedSeconds?: number;
+  pausedAt?: number | null;
+  taskCategory?: TaskCategory;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -33,16 +35,17 @@ const TransactionSchema = new Schema<ITransaction>(
     companyName:    { type: String, required: true },
     volume:         { type: Number, required: true, min: 1 },
     startTime:      { type: String, required: true },
-    startEpoch:     { type: Number },               // ← add
+    startEpoch:     { type: Number },
     endTime:        { type: String },
-    endEpoch:       { type: Number },               // ← add
+    endEpoch:       { type: Number },
     tat:            { type: Number },
     status:         { type: String, enum: ["PENDING", "COMPLETION", "ESCALATION"], default: "PENDING" },
     notes:          { type: String },
     date:           { type: String, required: true },
     ownerEmail:     { type: String, required: true, lowercase: true },
-    elapsedSeconds: { type: Number, default: 0 },   // ← add
-    pausedAt:       { type: Number, default: null }, // ← add
+    elapsedSeconds: { type: Number, default: 0 },
+    pausedAt:       { type: Number, default: null },
+    taskCategory:   { type: String, enum: ["Production", "Non-Production"], default: "Production" },
   },
   { timestamps: true }
 );

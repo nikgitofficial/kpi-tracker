@@ -16,14 +16,18 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { name } = await req.json();
+  const { name, taskCategory } = await req.json(); // ← add taskCategory
   if (!name?.trim()) return NextResponse.json({ error: "Name is required" }, { status: 400 });
 
   await connectDB();
   const exists = await DocType.findOne({ email: session.user.email, name: name.trim() });
   if (exists) return NextResponse.json({ error: "Doc type already exists" }, { status: 409 });
 
-  const docType = await DocType.create({ name: name.trim(), email: session.user.email });
+  const docType = await DocType.create({
+    name: name.trim(),
+    email: session.user.email,
+    taskCategory: taskCategory ?? "Production", // ← add this
+  });
   return NextResponse.json({ docType }, { status: 201 });
 }
 

@@ -243,3 +243,77 @@ input:-webkit-autofill:focus {
   pointer-events: none;
   border-radius: inherit;
 }
+
+/* Dark mode overrides */
+.dark {
+  --surface-0: #09090b;
+  --surface-50: #18181b;
+  --surface-100: #27272a;
+  --surface-200: #3f3f46;
+  --surface-300: #52525b;
+  --surface-500: #71717a;
+  --surface-600: #a1a1aa;
+  --surface-700: #d4d4d8;
+  --surface-800: #e4e4e7;
+  --surface-900: #f4f4f5;
+  --surface-950: #fafafa;
+}
+
+body {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.dark .bg-white {
+  background-color: var(--surface-100);
+  border-color: var(--surface-200);
+}
+
+.dark .bg-slate-50 {
+  background-color: var(--surface-950);
+}
+
+.dark .border-slate-200 {
+  border-color: var(--surface-200);
+}
+
+.dark .border-slate-100 {
+  border-color: var(--surface-100);
+}
+
+.dark .text-slate-800,
+.dark .text-slate-700,
+.dark .text-slate-900 {
+  color: var(--surface-700);
+}
+
+.dark .text-slate-500,
+.dark .text-slate-400 {
+  color: var(--surface-500);
+}
+
+.dark .bg-indigo-50 {
+  background-color: rgba(99, 102, 241, 0.1);
+}
+
+.dark .bg-violet-50 {
+  background-color: rgba(139, 92, 246, 0.1);
+}
+
+.dark .bg-amber-50 {
+  background-color: rgba(245, 158, 11, 0.1);
+}
+
+.dark input,
+.dark select {
+  background-color: var(--surface-50);
+  border-color: var(--surface-200);
+  color: var(--surface-700);
+}
+
+.dark input::placeholder {
+  color: var(--surface-500);
+}
+
+.dark .bg-slate-200 {
+  background-color: var(--surface-200);
+}

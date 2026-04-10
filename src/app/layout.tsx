@@ -1,7 +1,9 @@
+// app/layout.tsx
 import type { Metadata } from "next";
 import "./globals.css";
 import { SessionProvider } from "@/components/SessionProvider";
 import { auth } from "@/lib/auth";
+import { ThemeProvider } from "@/providers/ThemeProvider";
 
 export const metadata: Metadata = {
   title: {
@@ -30,7 +32,9 @@ export default async function RootLayout({
         />
       </head>
       <body>
-        <SessionProvider session={session}>{children}</SessionProvider>
+        <ThemeProvider>
+          <SessionProvider session={session}>{children}</SessionProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

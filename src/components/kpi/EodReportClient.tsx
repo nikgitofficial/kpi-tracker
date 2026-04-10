@@ -179,7 +179,7 @@ async function exportToExcel(
     "Escalation":        totals.escalation,
     "Total TX":          totals.total,
     "AHT per TX":        formatTat(overallAht),
-    "Productive Hours":  formatTat(totals.totalTat),
+    "Productivity Hours":  formatTat(totals.totalTat),
   };
   for (const dt of allDocTypes) overall[dt] = globalDocTypeCounts[dt] ?? 0;
   summaryRows.push(overall);
@@ -823,7 +823,7 @@ export function EodReportClient() {
             { label: "Escalation",    value: totals.escalation,     color: "text-purple-500" },
             { label: "Active Agents", value: activeAgents,          color: "text-indigo-600" },
             { label: "Overall AHT",   value: formatTat(overallAht), color: "text-indigo-600" },
-            { label: "Productive Hours",   value: formatTat(totals.totalTat),       color: "text-emerald-600" },
+            { label: "Productivity Hours",   value: formatTat(totals.totalTat),       color: "text-emerald-600" },
           ].map(s => (
             <div key={s.label} className="bg-white border border-slate-200 rounded-2xl px-4 py-3.5 text-center">
               <p className={`text-lg font-bold leading-tight ${s.color}`}>{s.value}</p>
