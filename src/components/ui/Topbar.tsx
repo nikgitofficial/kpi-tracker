@@ -10,6 +10,7 @@ import {
 import { signOut } from "next-auth/react";
 import Link from "next/link";
 import { UserAvatar } from "@/components/ui/UserAvatar";
+import { HelpModal } from "@/components/ui/HelpModal"; // ← import
 
 /* ─── Types ─── */
 interface SearchResult {
@@ -69,6 +70,9 @@ export function Topbar({
   const router   = useRouter();
   const meta     = PAGE_META[pathname] ?? { title: "Dashboard", crumb: "Overview" };
 
+  /* Help modal */
+  const [helpOpen, setHelpOpen] = useState(false);
+
   /* Dropdown */
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -97,7 +101,6 @@ export function Topbar({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const overlayRef     = useRef<HTMLDivElement>(null);
 
-  /* Open / close */
   const openSearch = useCallback(() => {
     setSearchOpen(true);
     setQuery("");
@@ -113,7 +116,6 @@ export function Topbar({
     setShowFilters(false);
   }, []);
 
-  /* ⌘K shortcut */
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); openSearch(); }
@@ -123,7 +125,6 @@ export function Topbar({
     return () => window.removeEventListener("keydown", h);
   }, [searchOpen, openSearch, closeSearch]);
 
-  /* Click-outside to close overlay */
   useEffect(() => {
     if (!searchOpen) return;
     const h = (e: MouseEvent) => {
@@ -133,7 +134,6 @@ export function Topbar({
     return () => document.removeEventListener("mousedown", h);
   }, [searchOpen, closeSearch]);
 
-  /* Seed agents + doc types for filter dropdowns */
   useEffect(() => {
     if (!searchOpen) return;
     Promise.all([
@@ -145,7 +145,6 @@ export function Topbar({
     });
   }, [searchOpen]);
 
-  /* Live search */
   useEffect(() => {
     if (!searchOpen) return;
     const q = query.trim();
@@ -169,17 +168,13 @@ export function Topbar({
         const data = await res.json();
         setResults(data.results ?? []);
         setActiveIdx(0);
-      } catch {
-        /* aborted */
-      } finally {
-        setLoading(false);
-      }
+      } catch { /* aborted */ }
+      finally { setLoading(false); }
     })();
 
     return () => controller.abort();
   }, [query, filters, searchOpen]);
 
-  /* Keyboard navigation */
   const handleSearchKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") { e.preventDefault(); setActiveIdx(i => Math.min(i + 1, results.length - 1)); }
     if (e.key === "ArrowUp")   { e.preventDefault(); setActiveIdx(i => Math.max(i - 1, 0)); }
@@ -225,15 +220,17 @@ export function Topbar({
 
         {/* Right actions */}
         <div className="flex items-center gap-1">
-          {/* Mobile search */}
-          <button
-            onClick={openSearch}
-            className="md:hidden w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-          >
+          <button onClick={() => setSearchOpen(true)}
+            className="md:hidden w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
             <Search size={15} />
           </button>
 
-          <button className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
+          {/* ── Help button — now opens modal ── */}
+          <button
+            onClick={() => setHelpOpen(true)}
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 transition-colors"
+            title="Help & shortcuts"
+          >
             <HelpCircle size={15} />
           </button>
 
@@ -297,19 +294,18 @@ export function Topbar({
         </div>
       </header>
 
+      {/* ── Help Modal ── */}
+      <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
+
       {/* ── Search Overlay ── */}
       {searchOpen && (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] px-4">
-          {/* Backdrop */}
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
-
-          {/* Panel */}
           <div
             ref={overlayRef}
             className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl shadow-slate-900/20 border border-slate-200 overflow-hidden flex flex-col"
             style={{ maxHeight: "72vh" }}
           >
-            {/* Input row */}
             <div className="flex items-center gap-3 px-4 py-3.5 border-b border-slate-100">
               {loading
                 ? <Loader2 size={16} className="text-indigo-400 animate-spin flex-shrink-0" />
@@ -324,7 +320,6 @@ export function Topbar({
                 className="flex-1 text-sm text-slate-800 placeholder:text-slate-400 bg-transparent outline-none"
               />
               <div className="flex items-center gap-1.5">
-                {/* Filter toggle */}
                 <button
                   onClick={() => setShowFilters(f => !f)}
                   className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
@@ -335,9 +330,7 @@ export function Topbar({
                 >
                   <SlidersHorizontal size={11} />
                   Filters
-                  {hasActiveFilters && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                  )}
+                  {hasActiveFilters && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />}
                 </button>
                 <button onClick={closeSearch}
                   className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
@@ -346,89 +339,62 @@ export function Topbar({
               </div>
             </div>
 
-            {/* Filter panel */}
             {showFilters && (
               <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/60">
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                  {/* Status */}
                   <div>
                     <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Status</label>
                     <div className="flex flex-wrap gap-1">
                       {(["", "COMPLETION", "PENDING", "ESCALATION"] as const).map(s => {
                         const cfg = s ? STATUS_CONFIG[s] : null;
                         return (
-                          <button
-                            key={s || "all"}
-                            onClick={() => setFilters(f => ({ ...f, status: s }))}
+                          <button key={s || "all"} onClick={() => setFilters(f => ({ ...f, status: s }))}
                             className={`px-2 py-1 rounded-lg border text-[11px] font-semibold transition-all ${
                               filters.status === s
                                 ? cfg ? `${cfg.color} ${cfg.bg}` : "bg-slate-200 border-slate-300 text-slate-700"
                                 : "bg-white border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600"
-                            }`}
-                          >
+                            }`}>
                             {s ? STATUS_CONFIG[s].label : "All"}
                           </button>
                         );
                       })}
                     </div>
                   </div>
-
-                  {/* Agent */}
                   <div>
                     <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Agent</label>
-                    <select
-                      value={filters.agentName}
-                      onChange={e => setFilters(f => ({ ...f, agentName: e.target.value }))}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition-all"
-                    >
+                    <select value={filters.agentName} onChange={e => setFilters(f => ({ ...f, agentName: e.target.value }))}
+                      className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition-all">
                       <option value="">All agents</option>
                       {knownAgents.map(a => <option key={a} value={a}>{a}</option>)}
                     </select>
                   </div>
-
-                  {/* Doc type */}
                   <div>
                     <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Task Type</label>
-                    <select
-                      value={filters.docType}
-                      onChange={e => setFilters(f => ({ ...f, docType: e.target.value }))}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition-all"
-                    >
+                    <select value={filters.docType} onChange={e => setFilters(f => ({ ...f, docType: e.target.value }))}
+                      className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition-all">
                       <option value="">All types</option>
                       {knownDocTypes.map(d => <option key={d} value={d}>{d}</option>)}
                     </select>
                   </div>
-
-                  {/* Volume range */}
                   <div className="col-span-2 sm:col-span-3">
-                    <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">
-                      Volume Range
-                    </label>
+                    <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Volume Range</label>
                     <div className="flex items-center gap-2">
                       <div className="relative flex-1">
                         <Hash size={10} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                        <input
-                          type="number" min="0" placeholder="Min"
-                          value={filters.minVolume}
+                        <input type="number" min="0" placeholder="Min" value={filters.minVolume}
                           onChange={e => setFilters(f => ({ ...f, minVolume: e.target.value }))}
-                          className="w-full bg-white border border-slate-200 rounded-lg pl-7 pr-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition-all"
-                        />
+                          className="w-full bg-white border border-slate-200 rounded-lg pl-7 pr-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition-all" />
                       </div>
                       <span className="text-slate-300 text-xs">—</span>
                       <div className="relative flex-1">
                         <Hash size={10} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                        <input
-                          type="number" min="0" placeholder="Max"
-                          value={filters.maxVolume}
+                        <input type="number" min="0" placeholder="Max" value={filters.maxVolume}
                           onChange={e => setFilters(f => ({ ...f, maxVolume: e.target.value }))}
-                          className="w-full bg-white border border-slate-200 rounded-lg pl-7 pr-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition-all"
-                        />
+                          className="w-full bg-white border border-slate-200 rounded-lg pl-7 pr-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition-all" />
                       </div>
                       {hasActiveFilters && (
-                        <button
-                          onClick={() => setFilters({ status: "", docType: "", agentName: "", minVolume: "", maxVolume: "" })}
-                          className="px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-500 text-xs font-semibold hover:bg-slate-200 transition-colors whitespace-nowrap"
-                        >
+                        <button onClick={() => setFilters({ status: "", docType: "", agentName: "", minVolume: "", maxVolume: "" })}
+                          className="px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-500 text-xs font-semibold hover:bg-slate-200 transition-colors whitespace-nowrap">
                           Clear
                         </button>
                       )}
@@ -438,7 +404,6 @@ export function Topbar({
               </div>
             )}
 
-            {/* Results */}
             <div className="flex-1 overflow-y-auto">
               {!query.trim() && !hasActiveFilters && (
                 <div className="px-4 py-5">
@@ -448,28 +413,20 @@ export function Topbar({
                       const cfg = STATUS_CONFIG[s];
                       const Icon = cfg.icon;
                       return (
-                        <button
-                          key={s}
-                          onClick={() => { setFilters(f => ({ ...f, status: s })); setShowFilters(true); }}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${cfg.color} ${cfg.bg} hover:opacity-80`}
-                        >
+                        <button key={s} onClick={() => { setFilters(f => ({ ...f, status: s })); setShowFilters(true); }}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${cfg.color} ${cfg.bg} hover:opacity-80`}>
                           <Icon size={11} />{cfg.label}
                         </button>
                       );
                     })}
                     {knownDocTypes.slice(0, 4).map(dt => (
-                      <button
-                        key={dt}
-                        onClick={() => { setFilters(f => ({ ...f, docType: dt })); setShowFilters(true); }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-violet-200 bg-violet-50 text-violet-600 text-xs font-semibold hover:opacity-80 transition-all"
-                      >
+                      <button key={dt} onClick={() => { setFilters(f => ({ ...f, docType: dt })); setShowFilters(true); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-violet-200 bg-violet-50 text-violet-600 text-xs font-semibold hover:opacity-80 transition-all">
                         <Tag size={10} />{dt}
                       </button>
                     ))}
                   </div>
-                  <p className="text-xs text-slate-400 mt-4 text-center">
-                    Type to search, or use filters above
-                  </p>
+                  <p className="text-xs text-slate-400 mt-4 text-center">Type to search, or use filters above</p>
                 </div>
               )}
 
@@ -490,10 +447,8 @@ export function Topbar({
                       if (!group?.length) return null;
                       const typeCfg = TYPE_ICON[type];
                       const TypeIcon = typeCfg.icon;
-
                       return (
                         <div key={type}>
-                          {/* Group label */}
                           <div className="flex items-center gap-2 px-4 pt-3 pb-1.5">
                             <TypeIcon size={11} className={typeCfg.color} />
                             <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
@@ -501,36 +456,23 @@ export function Topbar({
                             </span>
                             <span className="text-[10px] text-slate-300">{group.length}</span>
                           </div>
-
                           {group.map(result => {
                             const isActive = globalIdx === activeIdx;
                             const idx      = globalIdx++;
                             const StatusIcon = result.badgeColor && result.badge
                               ? (STATUS_CONFIG[result.badge as keyof typeof STATUS_CONFIG]?.icon ?? null)
                               : null;
-
                             return (
-                              <button
-                                key={result.id}
-                                onClick={() => {
-                                  if (result.href) { router.push(result.href); closeSearch(); }
-                                }}
+                              <button key={result.id}
+                                onClick={() => { if (result.href) { router.push(result.href); closeSearch(); } }}
                                 onMouseEnter={() => setActiveIdx(idx)}
-                                className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
-                                  isActive ? "bg-indigo-50" : "hover:bg-slate-50"
-                                }`}
-                              >
-                                {/* Type badge */}
+                                className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${isActive ? "bg-indigo-50" : "hover:bg-slate-50"}`}>
                                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${typeCfg.bg}`}>
                                   <TypeIcon size={13} className={typeCfg.color} />
                                 </div>
-
-                                {/* Content */}
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2">
-                                    <p className={`text-sm font-medium truncate ${isActive ? "text-indigo-700" : "text-slate-700"}`}>
-                                      {result.label}
-                                    </p>
+                                    <p className={`text-sm font-medium truncate ${isActive ? "text-indigo-700" : "text-slate-700"}`}>{result.label}</p>
                                     {result.badge && (
                                       <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-semibold flex-shrink-0 ${
                                         result.badge in STATUS_CONFIG
@@ -538,26 +480,14 @@ export function Topbar({
                                           : "bg-slate-100 border-slate-200 text-slate-500"
                                       }`}>
                                         {StatusIcon && <StatusIcon size={9} />}
-                                        {result.badge in STATUS_CONFIG
-                                          ? STATUS_CONFIG[result.badge as keyof typeof STATUS_CONFIG].label
-                                          : result.badge}
+                                        {result.badge in STATUS_CONFIG ? STATUS_CONFIG[result.badge as keyof typeof STATUS_CONFIG].label : result.badge}
                                       </span>
                                     )}
                                   </div>
-                                  {result.sub && (
-                                    <p className="text-[11px] text-slate-400 truncate mt-0.5">{result.sub}</p>
-                                  )}
+                                  {result.sub && <p className="text-[11px] text-slate-400 truncate mt-0.5">{result.sub}</p>}
                                 </div>
-
-                                {/* Right meta */}
-                                {result.meta && (
-                                  <span className="text-[11px] text-slate-400 font-mono flex-shrink-0">{result.meta}</span>
-                                )}
-
-                                {/* Arrow hint on active */}
-                                {isActive && (
-                                  <ArrowRight size={13} className="text-indigo-400 flex-shrink-0" />
-                                )}
+                                {result.meta && <span className="text-[11px] text-slate-400 font-mono flex-shrink-0">{result.meta}</span>}
+                                {isActive && <ArrowRight size={13} className="text-indigo-400 flex-shrink-0" />}
                               </button>
                             );
                           })}
@@ -569,21 +499,14 @@ export function Topbar({
               )}
             </div>
 
-            {/* Footer hints */}
             <div className="flex items-center justify-between px-4 py-2.5 border-t border-slate-100 bg-slate-50/60">
               <div className="flex items-center gap-3">
-                <span className="flex items-center gap-1 text-[11px] text-slate-400">
-                  <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-white text-[10px]">↑↓</kbd>
-                  Navigate
-                </span>
-                <span className="flex items-center gap-1 text-[11px] text-slate-400">
-                  <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-white text-[10px]">↵</kbd>
-                  Open
-                </span>
-                <span className="flex items-center gap-1 text-[11px] text-slate-400">
-                  <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-white text-[10px]">Esc</kbd>
-                  Close
-                </span>
+                {[["↑↓", "Navigate"], ["↵", "Open"], ["Esc", "Close"]].map(([key, label]) => (
+                  <span key={label} className="flex items-center gap-1 text-[11px] text-slate-400">
+                    <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-white text-[10px]">{key}</kbd>
+                    {label}
+                  </span>
+                ))}
               </div>
               <span className="text-[11px] text-slate-300">
                 {results.length > 0 ? `${results.length} result${results.length !== 1 ? "s" : ""}` : ""}

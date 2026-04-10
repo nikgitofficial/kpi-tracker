@@ -319,15 +319,31 @@ export default function TxLogPage() {
   }, []);
 
   const fetchTx = useCallback(async () => {
-    if (!selectedAgent) return;
-    const res = await fetch(`/api/kpi/transactions?date=${date}&agentId=${selectedAgent._id}`);
-    const d = await res.json();
-    const VALID = new Set(["PENDING", "COMPLETION", "ESCALATION"]);
-    const completed = (d.transactions ?? [])
-      .filter((t: Transaction) => t.endTime)
-      .map((t: Transaction) => ({ ...t, status: VALID.has(t.status) ? t.status : "PENDING" }));
-    setTransactions(completed);
-  }, [selectedAgent, date]);
+  if (!selectedAgent) return;
+  const res = await fetch(`/api/kpi/transactions?date=${date}&agentId=${selectedAgent._id}`);
+  const d = await res.json();
+  const VALID = new Set(["PENDING", "COMPLETION", "ESCALATION"]);
+
+  const completed = (d.transactions ?? [])
+    .filter((t: Transaction) => t.endTime)
+    .map((t: Transaction) => ({ ...t, status: VALID.has(t.status) ? t.status : "PENDING" }));
+  setTransactions(completed);
+
+  // ← NEW: restore paused txs from DB on load/refresh
+  const paused = (d.transactions ?? []).filter((t: Transaction) => !t.endTime && t.pausedAt != null);
+  const rebuilt: Record<string, ActiveTx> = {};
+  for (const t of paused) {
+    rebuilt[t._id] = {
+      _id: t._id,
+      docType: t.docType,
+      companyName: t.companyName,
+      resumedAt: Date.now(),
+      elapsedSeconds: t.elapsedSeconds ?? 0,
+      paused: true,
+    };
+  }
+  setInProgressTxs(rebuilt);
+}, [selectedAgent, date]);
 
   useEffect(() => { fetchTx(); }, [fetchTx]);
 
