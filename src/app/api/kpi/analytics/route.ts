@@ -35,6 +35,8 @@ export async function GET(req: NextRequest) {
     ? Math.round(tatsWithValue.reduce((a, t) => a + (t.tat ?? 0), 0) / tatsWithValue.length)
     : 0;
 
+  const totalProductiveSeconds = tatsWithValue.reduce((a, t) => a + (t.tat ?? 0), 0);
+
   const completionRate = totalTx ? Math.round((done / totalTx) * 100) : 0;
 
   // ── Per-agent aggregation ──
@@ -165,7 +167,7 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => a.date.localeCompare(b.date));
 
   return NextResponse.json({
-    summary: { totalTx, done, pending, noDoc, escalated, avgTat, completionRate },
+    summary: { totalTx, done, pending, noDoc, escalated, avgTat, completionRate,totalProductiveSeconds},
     agentStats,
     docTypeStats,
     dailyTrend,

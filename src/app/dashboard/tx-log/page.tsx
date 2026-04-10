@@ -142,7 +142,7 @@ async function exportToExcel(
   transactions: Transaction[],
   agentName: string,
   date: string,
-  stats: { total: number; completion: number; pending: number; escalation: number; avgTat: number }
+  stats: { total: number; completion: number; pending: number; escalation: number; avgTat: number; totalProductiveSeconds: number }
 ) {
   await loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -154,6 +154,7 @@ async function exportToExcel(
     "Volume": tx.volume,
     "TAT": formatTat(tx.tat),
     "Status": tx.status,
+    
     "Notes": tx.notes ?? "",
   }));
   const summary = [
@@ -161,6 +162,9 @@ async function exportToExcel(
     ["Total TX", stats.total], ["Completion", stats.completion],
     ["Pending", stats.pending], ["Escalation", stats.escalation],
     ["Avg TAT", formatTat(stats.avgTat)],
+    ["Productive Hours", formatTat(stats.totalProductiveSeconds)],
+    
+    
   ];
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.json_to_sheet(rows);
@@ -177,7 +181,7 @@ async function exportToPdf(
   agentName: string,
   date: string,
   formattedDate: string,
-  stats: { total: number; completion: number; pending: number; escalation: number; avgTat: number }
+  stats: { total: number; completion: number; pending: number; escalation: number; avgTat: number; totalProductiveSeconds: number }
 ) {
   await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
   await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js");
@@ -191,13 +195,14 @@ async function exportToPdf(
   doc.text("Transaction Log", 10, 14);
   doc.setFontSize(9); doc.setFont("helvetica", "normal"); doc.setTextColor(160, 160, 190);
   doc.text(`${agentName}  ·  ${formattedDate}`, 10, 20);
-  const statItems = [
-    { label: "Total TX", value: String(stats.total) },
-    { label: "Completion", value: String(stats.completion) },
-    { label: "Pending", value: String(stats.pending) },
-    { label: "Escalation", value: String(stats.escalation) },
-    { label: "Avg TAT", value: formatTat(stats.avgTat) },
-  ];
+ const statItems = [
+  { label: "Total TX",         value: String(stats.total) },
+  { label: "Completion",       value: String(stats.completion) },
+  { label: "Pending",          value: String(stats.pending) },
+  { label: "Escalation",       value: String(stats.escalation) },
+  { label: "Avg TAT",          value: formatTat(stats.avgTat) },
+  { label: "Productive Hours", value: formatTat(stats.totalProductiveSeconds) }, // ← add here
+];
   statItems.forEach((s, i) => {
     const x = 10 + i * 44;
     doc.setFillColor(40, 40, 60); doc.roundedRect(x, 26, 40, 14, 2, 2, "F");
@@ -205,6 +210,7 @@ async function exportToPdf(
     doc.text(s.value, x + 20, 33, { align: "center" });
     doc.setFontSize(7); doc.setFont("helvetica", "normal"); doc.setTextColor(120, 120, 160);
     doc.text(s.label.toUpperCase(), x + 20, 38, { align: "center" });
+    
   });
   const tableBody = transactions.map((tx, i) => [
     i + 1, tx.docType, tx.companyName, tx.volume,
@@ -261,6 +267,9 @@ export default function TxLogPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   // In-progress txs: paused ones waiting to be resumed, stored by _id
   const [inProgressTxs, setInProgressTxs] = useState<Record<string, ActiveTx>>({});
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterStatus, setFilterStatus] = useState<Transaction["status"] | "ALL">("ALL");
+  const [filterDocType, setFilterDocType] = useState("ALL");
   const [date, setDate] = useState(today());
 
   const [docType, setDocType] = useState("");
@@ -322,16 +331,30 @@ export default function TxLogPage() {
 
   useEffect(() => { fetchTx(); }, [fetchTx]);
 
-  const stats = {
-    total:      transactions.length,
-    completion: transactions.filter(t => t.status === "COMPLETION").length,
-    pending:    transactions.filter(t => t.status === "PENDING").length,
-    escalation: transactions.filter(t => t.status === "ESCALATION").length,
-    avgTat: (() => {
-      const withTat = transactions.filter(t => t.tat);
-      return withTat.length ? Math.round(withTat.reduce((a, t) => a + (t.tat ?? 0), 0) / withTat.length) : 0;
-    })(),
-  };
+ const stats = {
+  total:      transactions.length,
+  completion: transactions.filter(t => t.status === "COMPLETION").length,
+  pending:    transactions.filter(t => t.status === "PENDING").length,
+  escalation: transactions.filter(t => t.status === "ESCALATION").length,
+  avgTat: (() => {
+    const withTat = transactions.filter(t => t.tat);
+    return withTat.length ? Math.round(withTat.reduce((a, t) => a + (t.tat ?? 0), 0) / withTat.length) : 0;
+  })(),
+  totalProductiveSeconds: transactions.filter(t => t.tat).reduce((a, t) => a + (t.tat ?? 0), 0), // ← add this
+};
+
+  const filteredTransactions = transactions.filter(tx => {
+  const q = searchQuery.toLowerCase().trim();
+  const matchesSearch =
+    !q ||
+    tx.companyName.toLowerCase().includes(q) ||
+    tx.docType.toLowerCase().includes(q) ||
+    String(tx.volume).includes(q) ||
+    (tx.notes ?? "").toLowerCase().includes(q);
+  const matchesStatus = filterStatus === "ALL" || tx.status === filterStatus;
+  const matchesDocType = filterDocType === "ALL" || tx.docType === filterDocType;
+  return matchesSearch && matchesStatus && matchesDocType;
+});
 
   const formattedDate = new Date(date + "T00:00:00").toLocaleDateString("en-US", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
@@ -698,13 +721,14 @@ export default function TxLogPage() {
 
         {/* Stats row */}
         {selectedAgent && (
-          <div className="px-6 py-3 grid grid-cols-5 gap-3 border-b border-slate-200 bg-white flex-shrink-0">
+          <div className="px-6 py-3 grid grid-cols-6 gap-3 border-b border-slate-200 bg-white flex-shrink-0">
             {[
               { label: "Total TX",   value: stats.total,             color: "text-slate-700"  },
               { label: "Completion", value: stats.completion,        color: "text-green-600"  },
               { label: "Pending",    value: stats.pending,           color: "text-amber-600"  },
               { label: "Escalation", value: stats.escalation,        color: "text-purple-600" },
               { label: "Avg TAT",    value: formatTat(stats.avgTat), color: "text-indigo-600" },
+              { label: "Productive Hours", value: formatTat(stats.totalProductiveSeconds), color: "text-emerald-600" },
             ].map(s => (
               <div key={s.label} className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-center">
                 <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
@@ -895,18 +919,84 @@ export default function TxLogPage() {
               </div>
             ) : (
               <div>
-                <div className="px-6 pt-4 pb-2 flex items-center justify-between">
-                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Log — {formattedDate}</p>
-                  <div className="flex items-center gap-3">
-                    {inProgressCount > 0 && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-600 text-[11px] font-semibold">
-                        <Pause size={9} />
-                        {inProgressCount} in progress
-                      </span>
-                    )}
-                    <span className="text-[11px] text-slate-400">{transactions.length} completed</span>
-                  </div>
-                </div>
+                <div className="px-6 pt-4 pb-3 border-b border-slate-100 space-y-2.5">
+  <div className="flex items-center justify-between">
+    <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
+      Log — {formattedDate}
+    </p>
+    <div className="flex items-center gap-3">
+      {inProgressCount > 0 && (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-600 text-[11px] font-semibold">
+          <Pause size={9} />
+          {inProgressCount} in progress
+        </span>
+      )}
+      <span className="text-[11px] text-slate-400">
+        {filteredTransactions.length === transactions.length
+          ? `${transactions.length} completed`
+          : `${filteredTransactions.length} of ${transactions.length} completed`}
+      </span>
+    </div>
+  </div>
+
+  {/* Filter bar */}
+  <div className="flex items-center gap-2">
+    {/* Search input */}
+    <div className="relative flex-1">
+      <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+      </svg>
+      <input
+        value={searchQuery}
+        onChange={e => setSearchQuery(e.target.value)}
+        placeholder="Search company, task, notes, volume…"
+        className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition-all"
+      />
+      {searchQuery && (
+        <button
+          onClick={() => setSearchQuery("")}
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      )}
+    </div>
+
+    {/* Status filter */}
+    <select
+      value={filterStatus}
+      onChange={e => setFilterStatus(e.target.value as typeof filterStatus)}
+      className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-600 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition-all"
+    >
+      <option value="ALL">All statuses</option>
+      <option value="COMPLETION">Completion</option>
+      <option value="PENDING">Pending</option>
+      <option value="ESCALATION">Escalation</option>
+    </select>
+
+    {/* Doc type filter */}
+    <select
+      value={filterDocType}
+      onChange={e => setFilterDocType(e.target.value)}
+      className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-600 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition-all"
+    >
+      <option value="ALL">All task types</option>
+      {docTypes.map(dt => (
+        <option key={dt._id} value={dt.name}>{dt.name}</option>
+      ))}
+    </select>
+
+    {/* Clear filters */}
+    {(searchQuery || filterStatus !== "ALL" || filterDocType !== "ALL") && (
+      <button
+        onClick={() => { setSearchQuery(""); setFilterStatus("ALL"); setFilterDocType("ALL"); }}
+        className="px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-500 text-xs font-medium hover:bg-slate-200 transition-colors whitespace-nowrap"
+      >
+        Clear
+      </button>
+    )}
+  </div>
+</div>
 
                 <table className="w-full text-sm">
                   <thead>
@@ -981,7 +1071,7 @@ export default function TxLogPage() {
                     ))}
 
                     {/* ── Completed tx rows ── */}
-                    {transactions.map((tx, i) => (
+                    {filteredTransactions.map((tx, i) => (
                       <tr key={tx._id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                         <td className="px-4 py-3 text-slate-400 text-xs">{i + 1}</td>
                         <td className="px-4 py-3 text-slate-600">{tx.docType}</td>
@@ -1002,7 +1092,21 @@ export default function TxLogPage() {
                         </td>
                       </tr>
                     ))}
+                      {filteredTransactions.length === 0 && transactions.length > 0 && (
+                      <tr>
+                        <td colSpan={8} className="px-6 py-10 text-center">
+                          <p className="text-sm text-slate-400">No transactions match your filters.</p>
+                          <button
+                            onClick={() => { setSearchQuery(""); setFilterStatus("ALL"); setFilterDocType("ALL"); }}
+                            className="mt-2 text-xs text-indigo-400 hover:text-indigo-600 transition-colors"
+                          >
+                            Clear filters
+                          </button>
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
+   
                 </table>
               </div>
             )}

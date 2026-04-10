@@ -41,6 +41,12 @@ interface Agent {
   group?: string;
 }
 
+interface Summary {
+  totalTx: number; done: number; pending: number; noDoc: number;
+  escalated: number; avgTat: number; completionRate: number;
+  totalProductiveSeconds: number; // ← add this
+}
+
 /* ─────────────────────────────────────────────
    Helpers
 ───────────────────────────────────────────── */
