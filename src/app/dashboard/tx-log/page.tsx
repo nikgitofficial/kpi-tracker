@@ -78,6 +78,7 @@ interface ActiveTx {
   _id: string;
   docType: string;
   companyName: string;
+  volume?: number;
   resumedAt: number;
   elapsedSeconds: number;
   paused: boolean;
@@ -337,6 +338,7 @@ export default function TxLogPage() {
       _id: t._id,
       docType: t.docType,
       companyName: t.companyName,
+      volume: t.volume,
       resumedAt: Date.now(),
       elapsedSeconds: t.elapsedSeconds ?? 0,
       paused: true,
@@ -415,6 +417,7 @@ export default function TxLogPage() {
       setActiveTx({
         _id: data.transaction._id,
         docType, companyName: companyName.trim(),
+        volume: Number(volume),
         resumedAt: Date.now(),
         elapsedSeconds: 0,
         paused: false,
@@ -445,49 +448,53 @@ export default function TxLogPage() {
       body: JSON.stringify({ id: activeTx._id, elapsedSeconds: newElapsed, pausedAt: Date.now() }),
     });
 
-    const pausedTx: ActiveTx = { ...activeTx, elapsedSeconds: newElapsed, paused: true };
+    const pausedTx: ActiveTx = { ...activeTx, elapsedSeconds: newElapsed, paused: true,volume: Number(endVolume) };
     setInProgressTxs(prev => ({ ...prev, [activeTx._id]: pausedTx }));
     setActiveTx(null);
 
     setPauseSubmitting(false);
   };
 
-  /* ── Resume a paused tx from the table ── */
-  const handleResumeFromTable = async (txId: string) => {
-    const paused = inProgressTxs[txId];
-    if (!paused) return;
+/* ── Resume a paused tx from the table ── */
+const handleResumeFromTable = async (txId: string) => {
+  const paused = inProgressTxs[txId];
+  if (!paused) return;
 
-    // If there's currently an active (running) tx, pause it first
-    if (activeTx && !activeTx.paused) {
-      const newElapsed = activeTx.elapsedSeconds + Math.floor((Date.now() - activeTx.resumedAt) / 1000);
-      await fetch("/api/kpi/transactions", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: activeTx._id, elapsedSeconds: newElapsed, pausedAt: Date.now() }),
-      });
-      const nowPaused: ActiveTx = { ...activeTx, elapsedSeconds: newElapsed, paused: true };
-      setInProgressTxs(prev => ({ ...prev, [activeTx._id]: nowPaused }));
-    }
-
-    // Resume the selected paused tx
+  // If there's currently an active (running) tx, pause it first
+  if (activeTx && !activeTx.paused) {
+    const newElapsed = activeTx.elapsedSeconds + Math.floor((Date.now() - activeTx.resumedAt) / 1000);
     await fetch("/api/kpi/transactions", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: txId, pausedAt: null }),
+      body: JSON.stringify({ id: activeTx._id, elapsedSeconds: newElapsed, pausedAt: Date.now() }),
     });
+    const nowPaused: ActiveTx = { ...activeTx, elapsedSeconds: newElapsed, paused: true };
+    setInProgressTxs(prev => ({ ...prev, [activeTx._id]: nowPaused }));
+  }
 
-    const resumed: ActiveTx = { ...paused, resumedAt: Date.now(), paused: false };
-    setActiveTx(resumed);
-    setEndDocType(paused.docType);
-    setEndCompanyName(paused.companyName);
+  // Resume the selected paused tx
+  await fetch("/api/kpi/transactions", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: txId, pausedAt: null }),
+  });
 
-    // Remove from inProgressTxs since it's now active
-    setInProgressTxs(prev => {
-      const next = { ...prev };
-      delete next[txId];
-      return next;
-    });
-  };
+  const resumed: ActiveTx = { ...paused, resumedAt: Date.now(), paused: false };
+  setActiveTx(resumed);
+  
+  // CRITICAL FIX: Set the end form fields to match the resumed transaction's data
+  setEndDocType(paused.docType);
+  setEndCompanyName(paused.companyName);
+  setEndVolume(String(paused.volume || "1")); // Add this if you store volume in paused tx
+
+  // Remove from inProgressTxs since it's now active
+  setInProgressTxs(prev => {
+    const next = { ...prev };
+    delete next[txId];
+    return next;
+  });
+};
+ 
 
   /* ── End ── */
   const handleEnd = async (e: React.FormEvent) => {
