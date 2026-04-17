@@ -1650,11 +1650,20 @@ export default function TxLogPage() {
         <div className="flex-1 overflow-y-auto py-3 px-3 space-y-1.5">
           {docTypes.length === 0 && <p className="text-xs text-slate-400 dark:text-zinc-500 text-center py-6">No task types yet.<br />Click + to add one.</p>}
           {docTypes.map(dt => (
-            <div key={dt._id} className="flex items-center gap-1.5 flex-wrap">
-              <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 text-[11px]">{dt.name}</span>
-              <CategoryBadge category={dt.taskCategory ?? "Production"} />
-            </div>
-          ))}
+  <button
+    key={dt._id}
+    onClick={() => {
+      handleDocTypeChange(dt.name);
+      setCompanyName(""); setNotes(""); setVolume("1");
+      setTxStatus("COMPLETION"); setFormSubtasks([]);
+      setResumingTxId(null); setFormError(""); setSaveSuccess("");
+      setShowLogModal(true);
+    }}
+    className="w-full text-left px-2 py-1 rounded-md bg-slate-100 dark:bg-zinc-800 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-400 text-slate-500 dark:text-zinc-400 text-[11px] transition-colors"
+  >
+    {dt.name}
+  </button>
+))}
         </div>
       </div>
 
