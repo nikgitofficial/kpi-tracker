@@ -1415,7 +1415,7 @@ export default function TxLogPage() {
 
   /* ── Stats ── */
   const stats = {
-    total:      transactions.length,
+    total:      transactions.length + transactions.reduce((acc, tx) => acc + (tx.subtasks?.length ?? 0), 0),
     completion: transactions.filter(t => t.status === "COMPLETION").length,
     pending:    transactions.filter(t => t.status === "PENDING").length,
     escalation: transactions.filter(t => t.status === "ESCALATION").length,
