@@ -26,9 +26,9 @@ export async function GET(req: NextRequest) {
   // ── Summary ──
   const totalTx = txs.length;
   const done      = txs.filter((t) => t.status === "COMPLETION").length;
-  const pending   = txs.filter((t) => t.status === "PENDING").length;
-  const noDoc     = txs.filter((t) => t.status === "NO_DOC").length;
-  const escalated = txs.filter((t) => t.status === "ESCALATION").length;
+const pending   = txs.filter((t) => t.status === "PENDING").length;
+const hold      = txs.filter((t) => t.status === "HOLD").length;
+const escalated = txs.filter((t) => t.status === "ESCALATION").length;
 
   const tatsWithValue = txs.filter((t) => t.tat !== undefined && t.tat !== null);
   const avgTat = tatsWithValue.length
@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
       total: number;
       done: number;
       pending: number;
-      noDoc: number;
+      hold: number;
       escalated: number;
       tatSum: number;
       tatCount: number;
@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
         total: 0,
         done: 0,
         pending: 0,
-        noDoc: 0,
+        hold: 0,
         escalated: 0,
         tatSum: 0,
         tatCount: 0,
@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
     a.total++;
     if (tx.status === "COMPLETION") a.done++;
     if (tx.status === "PENDING")    a.pending++;
-    if (tx.status === "NO_DOC")     a.noDoc++;
+    if (tx.status === "HOLD") a.hold++;
     if (tx.status === "ESCALATION") a.escalated++;
     if (tx.tat !== undefined && tx.tat !== null) {
       a.tatSum += tx.tat;
@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
       total:     a.total,
       done:      a.done,
       pending:   a.pending,
-      noDoc:     a.noDoc,
+      hold: a.hold,
       escalated: a.escalated,
       avgTat:    a.tatCount ? Math.round(a.tatSum / a.tatCount) : 0,
       // Exclude NO_DOC from rate denominator
@@ -167,7 +167,7 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => a.date.localeCompare(b.date));
 
   return NextResponse.json({
-    summary: { totalTx, done, pending, noDoc, escalated, avgTat, completionRate,totalProductiveSeconds},
+    summary: { totalTx, done, pending, hold, escalated, avgTat, completionRate, totalProductiveSeconds },
     agentStats,
     docTypeStats,
     dailyTrend,
