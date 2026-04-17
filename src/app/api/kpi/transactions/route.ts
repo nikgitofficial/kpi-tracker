@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { connectDB } from "@/lib/db";
 import Transaction from "@/models/Transaction";
+import DocType from "@/models/DocType";
 
 // GET /api/kpi/transactions?date=YYYY-MM-DD&agentId=xxx
 export async function GET(req: NextRequest) {
@@ -43,6 +44,7 @@ export async function POST(req: NextRequest) {
       subtasks,
       productiveSeconds,
       timerStartEpoch,
+      countType,
     } = body;
 
     // Allow __PROD_TIMER__ sentinel to skip companyName check
@@ -57,6 +59,16 @@ export async function POST(req: NextRequest) {
 
     await connectDB();
 
+    // Look up countType from DocType if not provided
+    let resolvedCountType = countType;
+    if (!resolvedCountType && docType !== "__PROD_TIMER__") {
+      const docTypeRecord = await DocType.findOne({ 
+        name: docType, 
+        email: session.user.email 
+      });
+      resolvedCountType = docTypeRecord?.countType ?? "transaction";
+    }
+
     const txId = `TX${Date.now()}`;
 
     const startTime = new Date(startEpoch ?? Date.now()).toLocaleTimeString("en-PH", {
@@ -70,19 +82,33 @@ export async function POST(req: NextRequest) {
     const resolvedStatus = VALID_STATUSES.includes(status) ? status : "PENDING";
 
     // Normalize subtasks — ensure each has a valid status and taskCategory
-    const normalizedSubtasks = (subtasks ?? []).map((st: {
+    const normalizedSubtasks = await Promise.all((subtasks ?? []).map(async (st: {
       docType: string;
       number?: number;
       notes?: string;
       status?: string;
       taskCategory?: string;
-    }) => ({
-      docType:      st.docType,
-      number:       st.number ?? undefined,
-      notes:        st.notes  || undefined,
-      status:       VALID_STATUSES.includes(st.status ?? "") ? st.status : "PENDING",
-      taskCategory: st.taskCategory ?? "Production",
-      createdAt:    Date.now(),
+      countType?: string;
+    }) => {
+      // Look up countType if not provided
+      let subtaskCountType = st.countType;
+      if (!subtaskCountType) {
+        const docTypeRecord = await DocType.findOne({ 
+          name: st.docType, 
+          email: session.user.email 
+        });
+        subtaskCountType = docTypeRecord?.countType ?? "transaction";
+      }
+      
+      return {
+        docType:      st.docType,
+        number:       st.number ?? undefined,
+        notes:        st.notes  || undefined,
+        status:       VALID_STATUSES.includes(st.status ?? "") ? st.status : "PENDING",
+        taskCategory: st.taskCategory ?? "Production",
+        countType:    subtaskCountType,
+        createdAt:    Date.now(),
+      };
     }));
 
     const tx = await Transaction.create({
@@ -101,10 +127,11 @@ export async function POST(req: NextRequest) {
       elapsedSeconds:    elapsedSeconds ?? 0,
       pausedAt:          null,
       taskCategory:      taskCategory ?? "Production",
+      countType:         resolvedCountType,
       subtasks:          normalizedSubtasks,
       productiveSeconds: productiveSeconds ?? 0,
       timerStartEpoch:   timerStartEpoch ?? null,
-      timerPaused:       false, // ── ADDED: default false on create
+      timerPaused:       false,
     });
 
     return NextResponse.json({ transaction: tx }, { status: 201 });
@@ -153,6 +180,14 @@ export async function PATCH(req: NextRequest) {
       if (!subtask?.docType) {
         return NextResponse.json({ error: "Missing subtask docType" }, { status: 400 });
       }
+      
+      // Look up countType for this subtask
+      const docTypeRecord = await DocType.findOne({ 
+        name: subtask.docType, 
+        email: session.user.email 
+      });
+      const countType = docTypeRecord?.countType ?? "transaction";
+      
       const tx = await Transaction.findOneAndUpdate(
         { _id: id, ownerEmail: session.user.email },
         {
@@ -163,6 +198,7 @@ export async function PATCH(req: NextRequest) {
               notes:        subtask.notes || undefined,
               status:       VALID_STATUSES.includes(subtask.status) ? subtask.status : "PENDING",
               taskCategory: subtask.taskCategory ?? "Production",
+              countType:    countType,
               createdAt:    Date.now(),
             },
           },
@@ -181,6 +217,7 @@ export async function PATCH(req: NextRequest) {
       if (subtask?.notes  !== undefined)  updateFields["subtasks.$.notes"]       = subtask.notes;
       if (subtask?.status)                updateFields["subtasks.$.status"]      = subtask.status;
       if (subtask?.taskCategory)          updateFields["subtasks.$.taskCategory"] = subtask.taskCategory;
+      if (subtask?.countType)             updateFields["subtasks.$.countType"]    = subtask.countType;
 
       const tx = await Transaction.findOneAndUpdate(
         { _id: id, ownerEmail: session.user.email, "subtasks._id": subtaskId },
@@ -218,7 +255,7 @@ export async function PATCH(req: NextRequest) {
     if (taskCategory)                    updateData.taskCategory      = taskCategory;
     if (productiveSeconds !== undefined) updateData.productiveSeconds = Number(productiveSeconds);
     if ("timerStartEpoch" in body)       updateData.timerStartEpoch   = body.timerStartEpoch ?? null;
-    if ("timerPaused"     in body)       updateData.timerPaused       = body.timerPaused ?? false; // ── ADDED
+    if ("timerPaused"     in body)       updateData.timerPaused       = body.timerPaused ?? false;
 
     const tx = await Transaction.findOneAndUpdate(
       { _id: id, ownerEmail: session.user.email },

@@ -2,6 +2,7 @@ import mongoose, { Schema, Document, model, models } from "mongoose";
 
 export type TxStatus = "PENDING" | "COMPLETION" | "ESCALATION" | "HOLD";
 export type TaskCategory = "Production" | "Non-Production";
+export type CountType = "transaction" | "volume";
 
 /* ─── Subtask ─── */
 export interface ISubtask {
@@ -11,6 +12,7 @@ export interface ISubtask {
   notes?: string;
   status: TxStatus;
   taskCategory: TaskCategory;
+  countType: CountType;
   createdAt: number;
 }
 
@@ -21,6 +23,7 @@ const SubtaskSchema = new Schema<ISubtask>(
     notes:        { type: String },
     status:       { type: String, enum: ["PENDING", "COMPLETION", "ESCALATION", "HOLD"], default: "PENDING" },
     taskCategory: { type: String, enum: ["Production", "Non-Production"], default: "Production" },
+    countType:    { type: String, enum: ["transaction", "volume"], default: "transaction" },
     createdAt:    { type: Number, default: () => Date.now() },
   },
   { _id: true }
@@ -49,7 +52,8 @@ export interface ITransaction extends Document {
   /** Productivity timer seconds persisted here (replaces localStorage) */
   productiveSeconds?: number;
   timerStartEpoch?: number | null;
-  timerPaused?: boolean; // ── ADDED: tracks whether the productivity timer was paused
+  timerPaused?: boolean;
+  countType?: CountType;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -77,7 +81,8 @@ const TransactionSchema = new Schema<ITransaction>(
     subtasks:         { type: [SubtaskSchema], default: [] },
     productiveSeconds:{ type: Number, default: 0 },
     timerStartEpoch:  { type: Number, default: null },
-    timerPaused:      { type: Boolean, default: false }, // ── ADDED
+    timerPaused:      { type: Boolean, default: false },
+    countType:        { type: String, enum: ["transaction", "volume"], default: "transaction" },
   },
   { timestamps: true }
 );

@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { name, taskCategory } = await req.json(); // ← add taskCategory
+  const { name, taskCategory, countType } = await req.json();
   if (!name?.trim()) return NextResponse.json({ error: "Name is required" }, { status: 400 });
 
   await connectDB();
@@ -26,7 +26,8 @@ export async function POST(req: NextRequest) {
   const docType = await DocType.create({
     name: name.trim(),
     email: session.user.email,
-    taskCategory: taskCategory ?? "Production", // ← add this
+    taskCategory: taskCategory ?? "Production",
+    countType: countType ?? "transaction",
   });
   return NextResponse.json({ docType }, { status: 201 });
 }

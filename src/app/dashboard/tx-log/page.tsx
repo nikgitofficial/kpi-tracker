@@ -10,7 +10,9 @@ import {
 
 /* ─── Types ─── */
 interface Agent { _id: string; name: string; group?: string }
-interface DocType { _id: string; name: string; taskCategory: TaskCategory }
+
+type CountType = "transaction" | "volume";
+interface DocType { _id: string; name: string; taskCategory: TaskCategory; countType: CountType }
 
 type TaskCategory = "Production" | "Non-Production";
 
@@ -21,6 +23,7 @@ interface Subtask {
   notes?: string;
   status: "PENDING" | "COMPLETION" | "ESCALATION" | "HOLD";
   taskCategory: TaskCategory;
+  countType?: CountType;
   createdAt: number;
 }
 
@@ -42,6 +45,7 @@ interface Transaction {
   subtasks?: Subtask[];
   productiveSeconds?: number;
   timerPaused?: boolean;
+  countType?: CountType;
 }
 
 /* ─── Break / Session Types ─── */
@@ -107,6 +111,19 @@ function CategoryBadge({ category }: { category?: TaskCategory }) {
         : "bg-slate-100 dark:bg-zinc-800 border-slate-300 dark:border-zinc-600 text-slate-500 dark:text-zinc-400"
     }`}>
       {isProduction ? "⚙" : "✉"} {isProduction ? "Production" : "Non-Prod"}
+    </span>
+  );
+}
+
+function CountTypeBadge({ countType }: { countType?: CountType }) {
+  const isVolume = countType === "volume";
+  return (
+    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold ${
+      isVolume
+        ? "bg-emerald-50 border border-emerald-200 text-emerald-600"
+        : "bg-indigo-50 border border-indigo-200 text-indigo-500"
+    }`}>
+      {isVolume ? "VOL" : "TX"}
     </span>
   );
 }
@@ -311,7 +328,6 @@ function ProductivityTimer({ agentId, date, onProductivityChange }: Productivity
     return t.accSeconds;
   }, []);
 
-  // ── CHANGED: added `paused` param to persist timerPaused flag ──
   const persistToDB = useCallback((seconds: number, txId: string | null, startEpoch?: number | null, paused?: boolean) => {
     if (!txId) return;
     if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
@@ -342,12 +358,10 @@ function ProductivityTimer({ agentId, date, onProductivityChange }: Productivity
         if (timerRecord) {
           const secs = timerRecord.productiveSeconds ?? 0;
           const savedStartEpoch = timerRecord.timerStartEpoch ?? null;
-          // ── CHANGED: read persisted paused flag ──
           const savedPaused = timerRecord.timerPaused ?? false;
           setTimerTxId(timerRecord._id);
 
           if (savedStartEpoch) {
-            // Was running when page closed — resume counting from then
             const elapsed = Math.floor((Date.now() - savedStartEpoch) / 1000);
             const totalSecs = secs + elapsed;
             const resumed: StandaloneTimer = {
@@ -360,7 +374,6 @@ function ProductivityTimer({ agentId, date, onProductivityChange }: Productivity
             setDisplay(formatTat(totalSecs));
             onProductivityChange(totalSecs);
           } else if (savedPaused && secs > 0) {
-            // ── CHANGED: restore paused state instead of falling into isDone ──
             const paused: StandaloneTimer = {
               running: true,
               paused: true,
@@ -441,7 +454,6 @@ function ProductivityTimer({ agentId, date, onProductivityChange }: Productivity
     const txId = await ensureTimerRecord();
     const epoch = Date.now();
     setTimer({ running: true, paused: false, startEpoch: epoch, accSeconds: 0 });
-    // Persist immediately (no debounce) so refresh can recover startEpoch
     if (txId) {
       fetch("/api/kpi/transactions", {
         method: "PATCH",
@@ -451,7 +463,6 @@ function ProductivityTimer({ agentId, date, onProductivityChange }: Productivity
     }
   };
 
-  // ── CHANGED: persist timerPaused: true so refresh knows it was paused ──
   const handlePause = () => {
     setTimer(prev => {
       const acc = getTotalSeconds(prev);
@@ -460,13 +471,11 @@ function ProductivityTimer({ agentId, date, onProductivityChange }: Productivity
     });
   };
 
-  // ── CHANGED: persist timerPaused: false on resume ──
   const handleResume = () => {
     persistToDB(getTotalSeconds(timer), timerTxId, null, false);
     setTimer(prev => ({ ...prev, paused: false, startEpoch: Date.now() }));
   };
 
-  // ── CHANGED: persist timerPaused: false on end ──
   const handleEnd = () => {
     const total = getTotalSeconds(timer);
     onProductivityChange(total);
@@ -476,7 +485,6 @@ function ProductivityTimer({ agentId, date, onProductivityChange }: Productivity
     persistToDB(total, timerTxId, null, false);
   };
 
-  // ── CHANGED: persist timerPaused: false on reset ──
   const handleReset = () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     setTimer({ running: false, paused: false, startEpoch: null, accSeconds: 0 });
@@ -795,7 +803,6 @@ function TxTableRow({ tx, index, docTypeCount, subtaskDocTypeTotals, docTypes, o
         <td className="px-4 py-3 text-slate-600 dark:text-zinc-300">
           <div className="flex items-center gap-2 flex-wrap">
             <span>{tx.docType}</span>
-            
           </div>
         </td>
 
@@ -1359,6 +1366,7 @@ export default function TxLogPage() {
   const [newAgentGroup, setNewAgentGroup]           = useState("");
   const [newDocType, setNewDocType]                 = useState("");
   const [newDocTypeCategory, setNewDocTypeCategory] = useState<TaskCategory>("Production");
+  const [newDocTypeCountType, setNewDocTypeCountType] = useState<CountType>("transaction");
   const [exporting, setExporting]                   = useState<"pdf" | "excel" | null>(null);
 
   const [resumingTxId, setResumingTxId] = useState<string | null>(null);
@@ -1427,6 +1435,10 @@ export default function TxLogPage() {
 
   const docTypeCountMap: Record<string, number> = {};
   transactions.forEach(tx => { docTypeCountMap[tx.docType] = (docTypeCountMap[tx.docType] ?? 0) + 1; });
+
+  /* ── countType lookup map ── */
+  const countTypeMap: Record<string, CountType> = {};
+  docTypes.forEach(dt => { countTypeMap[dt.name] = dt.countType ?? "transaction"; });
 
   const filteredTransactions = transactions.filter(tx => {
     const q = searchQuery.toLowerCase().trim();
@@ -1512,34 +1524,43 @@ export default function TxLogPage() {
       return;
     }
 
-    const subtasksPayload = formSubtasks
-      .filter(st => st.docType)
-      .map(st => ({
-        docType: st.docType,
-        number:  st.number ? Number(st.number) : undefined,
-        status:  st.status,
-        notes:   st.notes.trim() || undefined,
-        taskCategory: docTypes.find(dt => dt.name === st.docType)?.taskCategory ?? "Production",
-      }));
+   const subtasksPayload = formSubtasks
+  .filter(st => st.docType)
+  .map(st => {
+    const foundDocType = docTypes.find(dt => dt.name === st.docType);
+    return {
+      docType: st.docType,
+      number:  st.number ? Number(st.number) : undefined,
+      status:  st.status,
+      notes:   st.notes.trim() || undefined,
+      taskCategory: foundDocType?.taskCategory ?? "Production",
+      countType: foundDocType?.countType ?? "transaction",
+    };
+  });
 
-    const res = await fetch("/api/kpi/transactions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        agentId:        selectedAgent._id,
-        agentName:      selectedAgent.name,
-        docType,
-        companyName:    companyName.trim(),
-        volume:         Number(volume),
-        date,
-        status:         finalStatus,
-        notes:          notes.trim() || undefined,
-        startEpoch:     Date.now(),
-        elapsedSeconds: 0,
-        taskCategory,
-        subtasks:       subtasksPayload,
-      }),
-    });
+    // Find the countType for this docType
+const selectedDocType = docTypes.find(dt => dt.name === docType);
+const countType = selectedDocType?.countType ?? "transaction";
+
+const res = await fetch("/api/kpi/transactions", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    agentId:        selectedAgent._id,
+    agentName:      selectedAgent.name,
+    docType,
+    companyName:    companyName.trim(),
+    volume:         Number(volume),
+    date,
+    status:         finalStatus,
+    notes:          notes.trim() || undefined,
+    startEpoch:     Date.now(),
+    elapsedSeconds: 0,
+    taskCategory,
+    countType,
+    subtasks:       subtasksPayload,
+  }),
+});
     setSubmitting(false);
     if (res.ok) {
       await fetchTx();
@@ -1616,12 +1637,22 @@ export default function TxLogPage() {
   };
   const addDocType = async () => {
     if (!newDocType.trim()) return;
-    const res = await fetch("/api/kpi/doc-types", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: newDocType.trim(), taskCategory: newDocTypeCategory }) });
+    const res = await fetch("/api/kpi/doc-types", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: newDocType.trim(),
+        taskCategory: newDocTypeCategory,
+        countType: newDocTypeCountType,
+      }),
+    });
     if (res.ok) {
       const d = await res.json();
       setDocTypes(prev => [...prev, d.docType]);
       if (!docType) { setDocType(d.docType.name); setTaskCategory(d.docType.taskCategory ?? "Production"); }
-      setNewDocType(""); setNewDocTypeCategory("Production");
+      setNewDocType("");
+      setNewDocTypeCategory("Production");
+      setNewDocTypeCountType("transaction");
     }
   };
   const deleteAgent = async (id: string) => {
@@ -1650,20 +1681,27 @@ export default function TxLogPage() {
         <div className="flex-1 overflow-y-auto py-3 px-3 space-y-1.5">
           {docTypes.length === 0 && <p className="text-xs text-slate-400 dark:text-zinc-500 text-center py-6">No task types yet.<br />Click + to add one.</p>}
           {docTypes.map(dt => (
-  <button
-    key={dt._id}
-    onClick={() => {
-      handleDocTypeChange(dt.name);
-      setCompanyName(""); setNotes(""); setVolume("1");
-      setTxStatus("COMPLETION"); setFormSubtasks([]);
-      setResumingTxId(null); setFormError(""); setSaveSuccess("");
-      setShowLogModal(true);
-    }}
-    className="w-full text-left px-2 py-1 rounded-md bg-slate-100 dark:bg-zinc-800 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-400 text-slate-500 dark:text-zinc-400 text-[11px] transition-colors"
-  >
-    {dt.name}
-  </button>
-))}
+            <button
+              key={dt._id}
+              onClick={() => {
+                handleDocTypeChange(dt.name);
+                setCompanyName(""); setNotes(""); setVolume("1");
+                setTxStatus("COMPLETION"); setFormSubtasks([]);
+                setResumingTxId(null); setFormError(""); setSaveSuccess("");
+                setShowLogModal(true);
+              }}
+              className="w-full text-left px-2 py-1 rounded-md bg-slate-100 dark:bg-zinc-800 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-400 text-slate-500 dark:text-zinc-400 text-[11px] transition-colors"
+            >
+              <span className="block truncate">{dt.name}</span>
+              <span className={`inline-flex items-center px-1 py-0.5 rounded text-[9px] font-bold mt-0.5 ${
+                (dt.countType ?? "transaction") === "volume"
+                  ? "bg-emerald-50 text-emerald-500"
+                  : "bg-indigo-50 text-indigo-400"
+              }`}>
+                {(dt.countType ?? "transaction") === "volume" ? "VOL" : "TX"}
+              </span>
+            </button>
+          ))}
         </div>
       </div>
 
@@ -1843,7 +1881,8 @@ export default function TxLogPage() {
                       <button onClick={() => { setSearchQuery(""); setFilterStatus("ALL"); setFilterDocType("ALL"); setFilterCategory("ALL"); }} className="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 text-xs font-medium hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors whitespace-nowrap">Clear</button>
                     )}
                   </div>
-{/* Task type summary mini-table (subtask types merged in) */}
+
+                 {/* Task type summary mini-table — counts based on countType */}
 {Object.keys(docTypeCountMap).length > 0 && (
   <div className="pt-0.5">
     <div className="rounded-lg border border-slate-200 dark:border-zinc-700 overflow-hidden text-[11px]">
@@ -1852,27 +1891,51 @@ export default function TxLogPage() {
           <tr className="bg-slate-100 dark:bg-zinc-800">
             <th className="px-2.5 py-1 text-left font-semibold text-slate-500 dark:text-zinc-400 border-r border-slate-200 dark:border-zinc-700 whitespace-nowrap">Task Type</th>
             <th className="px-2.5 py-1 text-center font-semibold text-slate-500 dark:text-zinc-400 whitespace-nowrap">Count</th>
-          </tr>
+           </tr>
         </thead>
         <tbody>
           {(() => {
-            const merged: Record<string, number> = { ...docTypeCountMap };
-            Object.entries(subtaskDocTypeTotals).forEach(([name, count]) => {
-              merged[name] = (merged[name] ?? 0) + count;
+            // Merge tx + subtask counts, respecting countType stored on each transaction/subtask
+            const merged: Record<string, number> = {};
+
+            transactions.forEach(tx => {
+              // Use the stored countType from the transaction, fallback to "transaction"
+              const add = tx.countType === "volume" ? (tx.volume ?? 1) : 1;
+              merged[tx.docType] = (merged[tx.docType] ?? 0) + add;
             });
+
+            transactions.forEach(tx => {
+              (tx.subtasks ?? []).forEach(st => {
+                // Use the stored countType from the subtask, fallback to "transaction"
+                const add = st.countType === "volume" ? (st.number ?? 1) : 1;
+                merged[st.docType] = (merged[st.docType] ?? 0) + add;
+              });
+            });
+
             const entries = Object.entries(merged);
             return entries.map(([name, count], i) => (
               <tr key={name} className={i < entries.length - 1 ? "border-t border-slate-100 dark:border-zinc-800" : ""}>
-                <td className="px-2.5 py-1 text-slate-600 dark:text-zinc-300 border-r border-slate-200 dark:border-zinc-700 whitespace-nowrap">{name}</td>
+                <td className="px-2.5 py-1 text-slate-600 dark:text-zinc-300 border-r border-slate-200 dark:border-zinc-700 whitespace-nowrap">
+                  <div className="flex items-center gap-1.5">
+                    {name}
+                    {/* Get the countType from the first transaction or subtask of this type */}
+                    <CountTypeBadge countType={
+                      transactions.find(tx => tx.docType === name)?.countType ||
+                      transactions.find(tx => tx.subtasks?.some(st => st.docType === name))?.subtasks?.find(st => st.docType === name)?.countType ||
+                      "transaction"
+                    } />
+                  </div>
+                 </td>
                 <td className="px-2.5 py-1 text-center font-bold text-indigo-500 dark:text-indigo-400 whitespace-nowrap">{count}</td>
-              </tr>
+               </tr>
             ));
           })()}
         </tbody>
-      </table>
+       </table>
     </div>
   </div>
 )}
+
                   {/* Hold summary */}
                   {stats.hold > 0 && (
                     <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-sky-50 border border-sky-200">
@@ -2000,9 +2063,29 @@ export default function TxLogPage() {
               </div>
               <div className="flex gap-2 mb-3">
                 <input value={newDocType} onChange={e => setNewDocType(e.target.value)} onKeyDown={e => e.key === "Enter" && addDocType()} placeholder="Task type name…" className={inputCls} />
+                {/* Prod / Non-Prod toggle */}
                 <div className="flex rounded-lg border border-slate-200 dark:border-zinc-700 overflow-hidden text-xs font-semibold flex-shrink-0">
                   <button type="button" onClick={() => setNewDocTypeCategory("Production")} className={`px-2.5 py-2 transition-colors ${newDocTypeCategory === "Production" ? "bg-indigo-50 text-indigo-600 border-r border-indigo-200" : "text-slate-400 hover:bg-slate-50 border-r border-slate-200"}`} title="Production">⚙ Prod</button>
                   <button type="button" onClick={() => setNewDocTypeCategory("Non-Production")} className={`px-2.5 py-2 transition-colors ${newDocTypeCategory === "Non-Production" ? "bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300" : "text-slate-400 hover:bg-slate-50"}`} title="Non-Production">✉ Non</button>
+                </div>
+                {/* TX / Volume count type toggle */}
+                <div className="flex rounded-lg border border-slate-200 dark:border-zinc-700 overflow-hidden text-xs font-semibold flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setNewDocTypeCountType("transaction")}
+                    className={`px-2.5 py-2 transition-colors ${newDocTypeCountType === "transaction" ? "bg-indigo-50 text-indigo-600 border-r border-indigo-200" : "text-slate-400 hover:bg-slate-50 border-r border-slate-200"}`}
+                    title="Count by transaction"
+                  >
+                    # TX
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewDocTypeCountType("volume")}
+                    className={`px-2.5 py-2 transition-colors ${newDocTypeCountType === "volume" ? "bg-emerald-50 text-emerald-600" : "text-slate-400 hover:bg-slate-50"}`}
+                    title="Count by volume"
+                  >
+                    Vol
+                  </button>
                 </div>
                 <button onClick={addDocType} className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-colors">Add</button>
               </div>
@@ -2012,6 +2095,7 @@ export default function TxLogPage() {
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-slate-700 dark:text-zinc-200">{dt.name}</span>
                       <CategoryBadge category={dt.taskCategory ?? "Production"} />
+                      <CountTypeBadge countType={dt.countType ?? "transaction"} />
                     </div>
                     <button onClick={() => deleteDocType(dt._id)} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={13} /></button>
                   </div>
