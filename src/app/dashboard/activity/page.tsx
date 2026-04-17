@@ -78,9 +78,9 @@ function relativeDate(dateStr: string) {
 }
 
 const STATUS_CONFIG = {
-  COMPLETION: { label: "Completion", color: "text-green-600",  bg: "bg-green-50 border-green-200",   dot: "bg-green-500"  },
-  PENDING:    { label: "Pending",    color: "text-amber-600",  bg: "bg-amber-50 border-amber-200",   dot: "bg-amber-500"  },
-  ESCALATION: { label: "Escalation", color: "text-purple-600", bg: "bg-purple-50 border-purple-200", dot: "bg-purple-500" },
+  COMPLETION: { label: "Completion", color: "text-green-600 dark:text-green-400",  bg: "bg-green-50 dark:bg-green-950/50 border-green-200 dark:border-green-800",   dot: "bg-green-500"  },
+  PENDING:    { label: "Pending",    color: "text-amber-600 dark:text-amber-400",  bg: "bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800",   dot: "bg-amber-500"  },
+  ESCALATION: { label: "Escalation", color: "text-purple-600 dark:text-purple-400", bg: "bg-purple-50 dark:bg-purple-950/50 border-purple-200 dark:border-purple-800", dot: "bg-purple-500" },
 };
 
 /* ─────────────────────────────────────────────
@@ -147,28 +147,27 @@ export default function ActivityPage() {
   const formattedTo   = new Date(to   + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
   return (
-    <div className="min-h-dvh bg-slate-50">
-
+    <div className="min-h-dvh bg-slate-50 dark:bg-zinc-950">
       <main className="max-w-4xl mx-auto px-6 py-8">
 
         {/* ── Header ── */}
         <div className="mb-8">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-indigo-500 mb-1">KPI</p>
-          <h1 className="text-xl font-semibold text-slate-900 tracking-tight">Activity Log</h1>
-          <p className="text-slate-400 text-sm mt-0.5">{formattedFrom} — {formattedTo}</p>
+          <p className="text-[11px] font-bold uppercase tracking-widest text-indigo-500 dark:text-indigo-400 mb-1">KPI</p>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-zinc-100 tracking-tight">Activity Log</h1>
+          <p className="text-slate-400 dark:text-zinc-500 text-sm mt-0.5">{formattedFrom} — {formattedTo}</p>
         </div>
 
         {/* ── Date range + filters ── */}
         <div className="flex flex-wrap items-center gap-2 mb-6">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400">FROM</span>
+            <span className="text-xs text-slate-400 dark:text-zinc-500">FROM</span>
             <input type="date" value={from} onChange={e => setFrom(e.target.value)}
-              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition-all" />
-            <span className="text-xs text-slate-400">TO</span>
+              className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm text-slate-700 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all" />
+            <span className="text-xs text-slate-400 dark:text-zinc-500">TO</span>
             <input type="date" value={to} onChange={e => setTo(e.target.value)}
-              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition-all" />
+              className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm text-slate-700 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all" />
             <button onClick={() => { setFrom(today()); setTo(today()); }}
-              className="px-3 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-500 text-xs font-semibold hover:bg-indigo-100 transition-colors">
+              className="px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-500 dark:text-indigo-400 text-xs font-semibold hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors">
               Today
             </button>
           </div>
@@ -176,14 +175,14 @@ export default function ActivityPage() {
           <div className="flex items-center gap-2 ml-auto">
             {/* Agent filter */}
             <select value={filterAgent} onChange={e => { setFilterAgent(e.target.value); setPage(1); }}
-              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-700 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition-all">
+              className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-xs text-slate-700 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all">
               <option value="all">All agents</option>
               {uniqueAgents.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
 
             {/* Status filter */}
             <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }}
-              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-700 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition-all">
+              className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-xs text-slate-700 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all">
               <option value="all">All statuses</option>
               <option value="COMPLETION">Completion</option>
               <option value="PENDING">Pending</option>
@@ -195,20 +194,20 @@ export default function ActivityPage() {
         {/* ── Stats row ── */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
           {[
-            { label: "Total TX",          value: transactions.length,    icon: Activity,      color: "text-slate-700"  },
-            { label: "Completion rate",    value: `${completionRate}%`,   icon: CheckCircle2,  color: "text-green-600"  },
-            { label: "Escalations",        value: escalations,            icon: AlertTriangle, color: "text-purple-600" },
-            { label: "Total handle time",  value: formatHms(totalTat),    icon: Clock,         color: "text-indigo-600" },
+            { label: "Total TX",          value: transactions.length,    icon: Activity,      color: "text-slate-700 dark:text-zinc-200"  },
+            { label: "Completion rate",    value: `${completionRate}%`,   icon: CheckCircle2,  color: "text-green-600 dark:text-green-400"  },
+            { label: "Escalations",        value: escalations,            icon: AlertTriangle, color: "text-purple-600 dark:text-purple-400" },
+            { label: "Total handle time",  value: formatHms(totalTat),    icon: Clock,         color: "text-indigo-600 dark:text-indigo-400" },
           ].map(s => {
             const Icon = s.icon;
             return (
-              <div key={s.label} className="bg-white border border-slate-200 rounded-2xl px-4 py-3.5 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">
-                  <Icon size={15} className="text-indigo-500" />
+              <div key={s.label} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl px-4 py-3.5 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-zinc-800 flex items-center justify-center flex-shrink-0">
+                  <Icon size={15} className="text-indigo-500 dark:text-indigo-400" />
                 </div>
                 <div>
                   <p className={`text-xl font-bold leading-none ${s.color}`}>{s.value}</p>
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wide mt-0.5">{s.label}</p>
+                  <p className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide mt-0.5">{s.label}</p>
                 </div>
               </div>
             );
@@ -228,19 +227,19 @@ export default function ActivityPage() {
                   onClick={() => { setFilterAgent(filterAgent === agent.name ? "all" : agent.name); setPage(1); }}
                   className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition-all ${
                     filterAgent === agent.name
-                      ? "bg-indigo-50 border-indigo-200 text-indigo-600"
-                      : "bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700"
+                      ? "bg-indigo-50 dark:bg-indigo-950/50 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400"
+                      : "bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-zinc-400 hover:border-slate-300 dark:hover:border-zinc-600 hover:text-slate-700 dark:hover:text-zinc-200"
                   }`}
                 >
                   <div className="w-5 h-5 rounded-md bg-indigo-600 flex items-center justify-center text-white text-[10px] font-bold">
                     {agent.name.slice(0, 2).toUpperCase()}
                   </div>
                   <span>{agent.name}</span>
-                  {agent.group && <span className="text-slate-400">· {agent.group}</span>}
-                  <span className="text-slate-400">|</span>
+                  {agent.group && <span className="text-slate-400 dark:text-zinc-500">· {agent.group}</span>}
+                  <span className="text-slate-400 dark:text-zinc-500">|</span>
                   <span>{agentTx.length} TX</span>
-                  <span className="text-green-600">{agentCompl} done</span>
-                  <span className="text-indigo-500 font-mono">{formatHms(agentTat)}</span>
+                  <span className="text-green-600 dark:text-green-400">{agentCompl} done</span>
+                  <span className="text-indigo-500 dark:text-indigo-400 font-mono">{formatHms(agentTat)}</span>
                 </button>
               );
             })}
@@ -249,12 +248,12 @@ export default function ActivityPage() {
 
         {/* ── Timeline ── */}
         {loading ? (
-          <div className="text-center py-16 text-slate-400 text-sm">Loading activity…</div>
+          <div className="text-center py-16 text-slate-400 dark:text-zinc-500 text-sm">Loading activity…</div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-16 bg-white border border-slate-200 rounded-2xl">
-            <Activity size={28} className="text-slate-300 mx-auto mb-3" />
-            <p className="text-slate-500 text-sm">No transactions found for this period.</p>
-            <p className="text-slate-400 text-xs mt-1">Adjust the date range or filters above.</p>
+          <div className="text-center py-16 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl">
+            <Activity size={28} className="text-slate-300 dark:text-zinc-600 mx-auto mb-3" />
+            <p className="text-slate-500 dark:text-zinc-400 text-sm">No transactions found for this period.</p>
+            <p className="text-slate-400 dark:text-zinc-500 text-xs mt-1">Adjust the date range or filters above.</p>
           </div>
         ) : (
           <div className="space-y-6">
@@ -262,16 +261,16 @@ export default function ActivityPage() {
               <div key={date}>
                 {/* Date header */}
                 <div className="flex items-center gap-3 mb-3">
-                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
+                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">
                     {relativeDate(date)}
                   </p>
-                  <div className="flex-1 h-px bg-slate-200" />
-                  <span className="text-[11px] text-slate-400">{byDate[date].length} tx</span>
+                  <div className="flex-1 h-px bg-slate-200 dark:bg-zinc-700" />
+                  <span className="text-[11px] text-slate-400 dark:text-zinc-500">{byDate[date].length} tx</span>
                 </div>
 
                 {/* Transactions for this date */}
                 <div className="relative">
-                  <div className="absolute left-[19px] top-0 bottom-0 w-px bg-slate-200" />
+                  <div className="absolute left-[19px] top-0 bottom-0 w-px bg-slate-200 dark:bg-zinc-700" />
 
                   <div className="space-y-1.5">
                     {byDate[date].map(tx => {
@@ -286,40 +285,40 @@ export default function ActivityPage() {
                           </div>
 
                           {/* Card */}
-                          <div className="flex-1 bg-white border border-slate-200 rounded-2xl px-5 py-4 my-1 hover:bg-slate-50 hover:border-slate-300 transition-all">
+                          <div className="flex-1 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl px-5 py-4 my-1 hover:bg-slate-50 dark:hover:bg-zinc-800/50 hover:border-slate-300 dark:hover:border-zinc-600 transition-all">
                             <div className="flex items-start justify-between gap-4">
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                                   <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
-                                  <p className="text-sm font-semibold text-slate-800 truncate">{tx.companyName}</p>
+                                  <p className="text-sm font-semibold text-slate-800 dark:text-zinc-200 truncate">{tx.companyName}</p>
                                   <span className={`px-1.5 py-0.5 rounded-md border text-[10px] font-semibold ${cfg.color} ${cfg.bg}`}>
                                     {cfg.label}
                                   </span>
                                 </div>
-                                <p className="text-xs text-slate-400 ml-3.5">{tx.docType} · {tx.agentName}</p>
+                                <p className="text-xs text-slate-400 dark:text-zinc-500 ml-3.5">{tx.docType} · {tx.agentName}</p>
                               </div>
                               <div className="text-right flex-shrink-0">
-                                <p className="text-xs font-mono text-indigo-500 font-semibold">{formatHms(tx.tat)}</p>
-                                <p className="text-[11px] text-slate-400 mt-0.5">{tx.startTime} → {tx.endTime}</p>
+                                <p className="text-xs font-mono text-indigo-500 dark:text-indigo-400 font-semibold">{formatHms(tx.tat)}</p>
+                                <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">{tx.startTime} → {tx.endTime}</p>
                               </div>
                             </div>
 
                             {/* Meta row */}
-                            <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-x-4 gap-y-1">
-                              <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
-                                <Users size={10} className="text-slate-400" />
+                            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 flex flex-wrap gap-x-4 gap-y-1">
+                              <span className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-zinc-400">
+                                <Users size={10} className="text-slate-400 dark:text-zinc-500" />
                                 {tx.agentName}
                                 {(() => {
                                   const agent = agents.find(a => a.name === tx.agentName);
-                                  return agent?.group ? <span className="text-slate-400 ml-1">· {agent.group}</span> : null;
+                                  return agent?.group ? <span className="text-slate-400 dark:text-zinc-500 ml-1">· {agent.group}</span> : null;
                                 })()}
                               </span>
-                              <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
-                                <TrendingUp size={10} className="text-slate-400" />
+                              <span className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-zinc-400">
+                                <TrendingUp size={10} className="text-slate-400 dark:text-zinc-500" />
                                 Vol: {tx.volume}
                               </span>
                               {tx.notes && (
-                                <span className="flex items-center gap-1.5 text-[11px] text-slate-500 italic">
+                                <span className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-zinc-400 italic">
                                   "{tx.notes}"
                                 </span>
                               )}
@@ -340,7 +339,7 @@ export default function ActivityPage() {
           <div className="mt-6 flex justify-center">
             <button
               onClick={() => setPage(p => p + 1)}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-500 hover:text-slate-700 hover:border-slate-300 transition-colors text-sm font-medium"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200 hover:border-slate-300 dark:hover:border-zinc-600 transition-colors text-sm font-medium"
             >
               <ChevronDown size={14} />
               Load more ({filtered.length - paginated.length} remaining)
@@ -350,19 +349,19 @@ export default function ActivityPage() {
 
         {/* ── Bottom summary ── */}
         {!loading && filtered.length > 0 && (
-          <div className="mt-8 bg-white border border-slate-200 rounded-2xl px-5 py-4">
+          <div className="mt-8 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl px-5 py-4">
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
-                <p className="text-lg font-bold text-slate-900">{filtered.length}</p>
-                <p className="text-[11px] text-slate-400 uppercase tracking-wide mt-0.5">Transactions shown</p>
+                <p className="text-lg font-bold text-slate-900 dark:text-zinc-100">{filtered.length}</p>
+                <p className="text-[11px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide mt-0.5">Transactions shown</p>
               </div>
               <div>
-                <p className="text-lg font-bold text-indigo-500 font-mono">{formatHms(filtered.reduce((s, t) => s + (t.tat ?? 0), 0))}</p>
-                <p className="text-[11px] text-slate-400 uppercase tracking-wide mt-0.5">Total handle time</p>
+                <p className="text-lg font-bold text-indigo-500 dark:text-indigo-400 font-mono">{formatHms(filtered.reduce((s, t) => s + (t.tat ?? 0), 0))}</p>
+                <p className="text-[11px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide mt-0.5">Total handle time</p>
               </div>
               <div>
-                <p className="text-lg font-bold text-green-600">{filtered.filter(t => t.status === "COMPLETION").length}</p>
-                <p className="text-[11px] text-slate-400 uppercase tracking-wide mt-0.5">Completed</p>
+                <p className="text-lg font-bold text-green-600 dark:text-green-400">{filtered.filter(t => t.status === "COMPLETION").length}</p>
+                <p className="text-[11px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide mt-0.5">Completed</p>
               </div>
             </div>
           </div>

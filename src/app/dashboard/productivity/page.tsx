@@ -1,4 +1,3 @@
-// app/dashboard/productivity/page.tsx
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -49,13 +48,13 @@ function daysAgo(n: number) {
 function RateBar({ value, color }: { value: number; color: string }) {
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+      <div className="flex-1 h-1.5 bg-slate-100 dark:bg-zinc-700 rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full transition-all duration-500 ${color}`}
           style={{ width: `${Math.min(value, 100)}%` }}
         />
       </div>
-      <span className="text-xs font-semibold w-14 text-right tabular-nums text-slate-600">
+      <span className="text-xs font-semibold w-14 text-right tabular-nums text-slate-600 dark:text-zinc-400">
         {value.toFixed(2)}%
       </span>
     </div>
@@ -377,7 +376,7 @@ async function exportToPdf(
 function DocTypeBreakdown({ counts, allDocTypes }: { counts: Record<string, number>; allDocTypes: string[] }) {
   const maxCount = Math.max(...Object.values(counts), 1);
   return (
-    <tr className="bg-indigo-50/40 border-b border-indigo-100">
+    <tr className="bg-indigo-50/40 dark:bg-indigo-950/30 border-b border-indigo-100 dark:border-indigo-900">
       <td className="px-5 py-2.5 pl-14" colSpan={8}>
         <div className="flex flex-wrap gap-x-6 gap-y-1.5">
           {allDocTypes.map(dt => {
@@ -385,14 +384,14 @@ function DocTypeBreakdown({ counts, allDocTypes }: { counts: Record<string, numb
             if (count === 0) return null;
             return (
               <div key={dt} className="flex items-center gap-2 min-w-[140px]">
-                <span className="text-[11px] text-slate-500 w-28 truncate">{dt}</span>
-                <div className="flex-1 h-1 bg-slate-200 rounded-full overflow-hidden w-16">
+                <span className="text-[11px] text-slate-500 dark:text-zinc-400 w-28 truncate">{dt}</span>
+                <div className="flex-1 h-1 bg-slate-200 dark:bg-zinc-700 rounded-full overflow-hidden w-16">
                   <div
                     className="h-full bg-indigo-400 rounded-full"
                     style={{ width: `${(count / maxCount) * 100}%` }}
                   />
                 </div>
-                <span className="text-[11px] font-semibold text-indigo-600 tabular-nums w-5 text-right">{count}</span>
+                <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 tabular-nums w-5 text-right">{count}</span>
               </div>
             );
           })}
@@ -487,18 +486,18 @@ export default function ProductivityPage() {
     const groupAvgCompl = rows.length ? rows.reduce((s, r) => s + r.completionRate, 0) / rows.length : 0;
 
     return (
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-200">
-              <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400 w-8"></th>
-              <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Agent</th>
-              <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-indigo-400">Productivity</th>
-              <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Avg TAT</th>
-              <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Total Volume</th>
-              <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-green-600 min-w-[140px]">Completion Rate</th>
-              <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-amber-500 min-w-[140px]">Pending Rate</th>
-              <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-purple-500 min-w-[140px]">Escalation Rate</th>
+            <tr className="border-b border-slate-200 dark:border-zinc-700">
+              <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400 dark:text-zinc-500 w-8"></th>
+              <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Agent</th>
+              <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-indigo-400 dark:text-indigo-400">Productivity</th>
+              <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Avg TAT</th>
+              <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Total Volume</th>
+              <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-green-600 dark:text-green-500 min-w-[140px]">Completion Rate</th>
+              <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-amber-500 dark:text-amber-400 min-w-[140px]">Pending Rate</th>
+              <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-purple-500 dark:text-purple-400 min-w-[140px]">Escalation Rate</th>
             </tr>
           </thead>
           <tbody>
@@ -510,17 +509,17 @@ export default function ProductivityPage() {
                   <tr
                     key={row.agentId}
                     onClick={() => hasDocTypes && toggleAgent(row.agentId)}
-                    className={`border-b border-slate-100 transition-colors ${
-                      hasDocTypes ? "cursor-pointer hover:bg-slate-50" : ""
-                    } ${expanded ? "bg-indigo-50/30" : ""} ${
+                    className={`border-b border-slate-100 dark:border-zinc-800 transition-colors ${
+                      hasDocTypes ? "cursor-pointer hover:bg-slate-50 dark:hover:bg-zinc-800/50" : ""
+                    } ${expanded ? "bg-indigo-50/30 dark:bg-indigo-950/20" : ""} ${
                       i === rows.length - 1 && !expanded ? "border-b-0" : ""
                     }`}
                   >
-                    <td className="px-5 py-3.5 text-slate-400 w-8">
+                    <td className="px-5 py-3.5 text-slate-400 dark:text-zinc-500 w-8">
                       {hasDocTypes && (
                         expanded
                           ? <ChevronDown size={13} className="text-indigo-400" />
-                          : <ChevronRight size={13} className="text-slate-300" />
+                          : <ChevronRight size={13} className="text-slate-300 dark:text-zinc-600" />
                       )}
                     </td>
                     <td className="px-5 py-3.5">
@@ -528,16 +527,16 @@ export default function ProductivityPage() {
                         <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                           {row.agentName.slice(0, 2).toUpperCase()}
                         </div>
-                        <span className="text-slate-700 font-medium">{row.agentName}</span>
+                        <span className="text-slate-700 dark:text-zinc-200 font-medium">{row.agentName}</span>
                       </div>
                     </td>
-                    <td className="text-center px-4 py-3.5 font-mono text-indigo-500 font-semibold text-xs">
+                    <td className="text-center px-4 py-3.5 font-mono text-indigo-500 dark:text-indigo-400 font-semibold text-xs">
                       {formatHms(row.productivity)}
                     </td>
-                    <td className="text-center px-4 py-3.5 font-mono text-slate-500 text-xs">
+                    <td className="text-center px-4 py-3.5 font-mono text-slate-500 dark:text-zinc-400 text-xs">
                       {row.avgTat ? formatHms(row.avgTat) : "—"}
                     </td>
-                    <td className="text-center px-4 py-3.5 text-slate-700 font-semibold">
+                    <td className="text-center px-4 py-3.5 text-slate-700 dark:text-zinc-200 font-semibold">
                       {row.totalVolume}
                     </td>
                     <td className="px-4 py-3.5">
@@ -562,12 +561,12 @@ export default function ProductivityPage() {
             })}
 
             {rows.length > 1 && (
-              <tr className="bg-slate-50 border-t border-slate-200">
+              <tr className="bg-slate-50 dark:bg-zinc-800/50 border-t border-slate-200 dark:border-zinc-700">
                 <td className="px-5 py-2.5 w-8"></td>
-                <td className="px-5 py-2.5 text-xs font-bold text-slate-400 uppercase tracking-wider">Subtotal</td>
-                <td className="text-center px-4 py-2.5 font-mono text-indigo-500 font-bold text-xs">{formatHms(groupTat)}</td>
-                <td className="text-center px-4 py-2.5 text-slate-300 text-xs">—</td>
-                <td className="text-center px-4 py-2.5 text-slate-700 font-bold">{groupVolume}</td>
+                <td className="px-5 py-2.5 text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">Subtotal</td>
+                <td className="text-center px-4 py-2.5 font-mono text-indigo-500 dark:text-indigo-400 font-bold text-xs">{formatHms(groupTat)}</td>
+                <td className="text-center px-4 py-2.5 text-slate-300 dark:text-zinc-600 text-xs">—</td>
+                <td className="text-center px-4 py-2.5 text-slate-700 dark:text-zinc-200 font-bold">{groupVolume}</td>
                 <td className="px-4 py-2.5">
                   <RateBar value={groupAvgCompl} color="bg-green-500" />
                 </td>
@@ -586,48 +585,48 @@ export default function ProductivityPage() {
   };
 
   return (
-    <div className="min-h-dvh bg-slate-50">
+    <div className="min-h-dvh bg-slate-50 dark:bg-zinc-950">
       <main className="max-w-6xl mx-auto px-6 py-8">
 
         {/* ── Header ── */}
         <div className="flex items-start justify-between mb-6">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-indigo-500 mb-1">KPI</p>
-            <h1 className="text-xl font-semibold text-slate-900 tracking-tight">Productivity Report</h1>
-            <p className="text-slate-400 text-sm mt-0.5">{formattedFrom} — {formattedTo}</p>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-indigo-500 dark:text-indigo-400 mb-1">KPI</p>
+            <h1 className="text-xl font-semibold text-slate-900 dark:text-zinc-100 tracking-tight">Productivity Report</h1>
+            <p className="text-slate-400 dark:text-zinc-500 text-sm mt-0.5">{formattedFrom} — {formattedTo}</p>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap justify-end">
-            <span className="text-xs text-slate-400">FROM</span>
+            <span className="text-xs text-slate-400 dark:text-zinc-500">FROM</span>
             <input
               type="date"
               value={from}
               onChange={e => setFrom(e.target.value)}
-              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition-all"
+              className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm text-slate-700 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all"
             />
-            <span className="text-xs text-slate-400">TO</span>
+            <span className="text-xs text-slate-400 dark:text-zinc-500">TO</span>
             <input
               type="date"
               value={to}
               onChange={e => setTo(e.target.value)}
-              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition-all"
+              className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm text-slate-700 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all"
             />
             <button
               onClick={() => { setFrom(today()); setTo(today()); }}
-              className="px-3 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-500 text-xs font-semibold hover:bg-indigo-100 transition-colors"
+              className="px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-500 dark:text-indigo-400 text-xs font-semibold hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
             >
               Today
             </button>
 
-            <div className="h-6 w-px bg-slate-200 mx-1" />
+            <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700 mx-1" />
 
             {/* Group / Ungroup toggle */}
             <button
               onClick={() => setIsGrouped(g => !g)}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
                 isGrouped
-                  ? "bg-slate-700 border-slate-700 text-white hover:bg-slate-800"
-                  : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                  ? "bg-slate-700 dark:bg-slate-600 border-slate-700 dark:border-slate-600 text-white hover:bg-slate-800 dark:hover:bg-slate-700"
+                  : "bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700"
               }`}
               title={isGrouped ? "Switch to ungrouped view" : "Switch to grouped view"}
             >
@@ -635,7 +634,7 @@ export default function ProductivityPage() {
               {isGrouped ? "Grouped" : "Ungrouped"}
             </button>
 
-            <div className="h-6 w-px bg-slate-200 mx-1" />
+            <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700 mx-1" />
 
             <button
               onClick={handleExcelExport}
@@ -643,8 +642,8 @@ export default function ProductivityPage() {
               title={canExport ? "Export to Excel" : "No data to export"}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
                 canExport
-                  ? "bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-100"
-                  : "bg-slate-50 border-slate-200 text-slate-300 cursor-not-allowed"
+                  ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
+                  : "bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-300 dark:text-zinc-600 cursor-not-allowed"
               }`}
             >
               <FileSpreadsheet size={13} />
@@ -657,8 +656,8 @@ export default function ProductivityPage() {
               title={canExport ? "Export to PDF" : "No data to export"}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
                 canExport
-                  ? "bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100"
-                  : "bg-slate-50 border-slate-200 text-slate-300 cursor-not-allowed"
+                  ? "bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50"
+                  : "bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-300 dark:text-zinc-600 cursor-not-allowed"
               }`}
             >
               <FileText size={13} />
@@ -670,73 +669,73 @@ export default function ProductivityPage() {
         {/* ── Summary cards ── */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
           {[
-            { icon: Users,        label: "Total Agents",      value: allRows.length,                 color: "text-slate-700"  },
-            { icon: TrendingUp,   label: "Total Volume",      value: totalVolume,                    color: "text-indigo-600" },
-            { icon: Clock,        label: "Total Handle Time", value: formatHms(totalTat),            color: "text-indigo-600" },
-            { icon: CheckCircle2, label: "Avg Completion",    value: `${avgCompletion.toFixed(1)}%`, color: "text-green-600"  },
+            { icon: Users,        label: "Total Agents",      value: allRows.length,                 color: "text-slate-700 dark:text-zinc-200"  },
+            { icon: TrendingUp,   label: "Total Volume",      value: totalVolume,                    color: "text-indigo-600 dark:text-indigo-400" },
+            { icon: Clock,        label: "Total Handle Time", value: formatHms(totalTat),            color: "text-indigo-600 dark:text-indigo-400" },
+            { icon: CheckCircle2, label: "Avg Completion",    value: `${avgCompletion.toFixed(1)}%`, color: "text-green-600 dark:text-green-400"  },
           ].map(s => (
-            <div key={s.label} className="bg-white border border-slate-200 rounded-2xl px-4 py-3.5 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">
-                <s.icon size={15} className="text-indigo-500" />
+            <div key={s.label} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl px-4 py-3.5 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-zinc-800 flex items-center justify-center flex-shrink-0">
+                <s.icon size={15} className="text-indigo-500 dark:text-indigo-400" />
               </div>
               <div>
                 <p className={`text-lg font-bold leading-tight ${s.color}`}>{s.value}</p>
-                <p className="text-[10px] text-slate-400 uppercase tracking-wide">{s.label}</p>
+                <p className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide">{s.label}</p>
               </div>
             </div>
           ))}
         </div>
 
         {loading && (
-          <div className="text-center py-12 text-slate-400 text-sm">Loading productivity data…</div>
+          <div className="text-center py-12 text-slate-400 dark:text-zinc-500 text-sm">Loading productivity data…</div>
         )}
 
         {!loading && groups.length === 0 && (
-          <div className="text-center py-16 bg-white border border-slate-200 rounded-2xl">
-            <TrendingUp size={32} className="text-slate-300 mx-auto mb-3" />
-            <p className="text-slate-500 text-sm">No productivity data for the selected date range.</p>
-            <p className="text-slate-400 text-xs mt-1">Make sure agents have completed transactions in this period.</p>
+          <div className="text-center py-16 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl">
+            <TrendingUp size={32} className="text-slate-300 dark:text-zinc-600 mx-auto mb-3" />
+            <p className="text-slate-500 dark:text-zinc-400 text-sm">No productivity data for the selected date range.</p>
+            <p className="text-slate-400 dark:text-zinc-500 text-xs mt-1">Make sure agents have completed transactions in this period.</p>
           </div>
         )}
 
         {/* ── Doc Type Summary Panel ── */}
         {!loading && allDocTypes.length > 0 && (
-          <div className="mb-5 bg-white border border-slate-200 rounded-2xl overflow-hidden">
+          <div className="mb-5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl overflow-hidden">
             <button
               onClick={() => setShowDocSummary(s => !s)}
-              className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-slate-50 transition-colors"
+              className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors"
             >
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-green-500" />
-                  <span className="text-xs font-bold text-slate-700 uppercase tracking-widest">Tasks Summary</span>
+                  <span className="text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-widest">Tasks Summary</span>
                 </div>
-                <span className="text-[11px] text-slate-400">{allDocTypes.length} types · {Object.values(globalDocTypeCounts).reduce((a, b) => a + b, 0)} total transactions</span>
+                <span className="text-[11px] text-slate-400 dark:text-zinc-500">{allDocTypes.length} types · {Object.values(globalDocTypeCounts).reduce((a, b) => a + b, 0)} total transactions</span>
               </div>
               <ChevronDown
                 size={14}
-                className={`text-slate-400 transition-transform ${showDocSummary ? "rotate-180" : ""}`}
+                className={`text-slate-400 dark:text-zinc-500 transition-transform ${showDocSummary ? "rotate-180" : ""}`}
               />
             </button>
 
             {showDocSummary && (
-              <div className="border-t border-slate-200">
+              <div className="border-t border-slate-200 dark:border-zinc-700">
                 {/* Global totals row */}
-                <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Overall Totals</p>
+                <div className="px-5 py-3 border-b border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">Overall Totals</p>
                   <div className="flex flex-wrap gap-3">
                     {allDocTypes.map(dt => {
                       const count = globalDocTypeCounts[dt] ?? 0;
                       const maxCount = Math.max(...Object.values(globalDocTypeCounts), 1);
                       return (
-                        <div key={dt} className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-1.5 min-w-[140px]">
+                        <div key={dt} className="flex items-center gap-2 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 min-w-[140px]">
                           <div className="flex-1">
-                            <p className="text-[11px] text-slate-500 truncate">{dt}</p>
+                            <p className="text-[11px] text-slate-500 dark:text-zinc-400 truncate">{dt}</p>
                             <div className="flex items-center gap-1.5 mt-0.5">
-                              <div className="flex-1 h-1 bg-slate-100 rounded-full overflow-hidden">
+                              <div className="flex-1 h-1 bg-slate-100 dark:bg-zinc-700 rounded-full overflow-hidden">
                                 <div className="h-full bg-green-400 rounded-full" style={{ width: `${(count / maxCount) * 100}%` }} />
                               </div>
-                              <span className="text-xs font-bold text-slate-700 tabular-nums">{count}</span>
+                              <span className="text-xs font-bold text-slate-700 dark:text-zinc-200 tabular-nums">{count}</span>
                             </div>
                           </div>
                         </div>
@@ -750,12 +749,12 @@ export default function ProductivityPage() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="border-b border-slate-200 bg-slate-50">
-                          <th className="text-left px-5 py-2.5 text-[11px] font-semibold uppercase tracking-widest text-slate-400 sticky left-0 bg-slate-50 min-w-[90px]">Date</th>
+                        <tr className="border-b border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800">
+                          <th className="text-left px-5 py-2.5 text-[11px] font-semibold uppercase tracking-widest text-slate-400 dark:text-zinc-500 sticky left-0 bg-slate-50 dark:bg-zinc-800 min-w-[90px]">Date</th>
                           {allDocTypes.map(dt => (
-                            <th key={dt} className="text-center px-3 py-2.5 text-[11px] font-semibold text-slate-400 whitespace-nowrap min-w-[90px]">{dt}</th>
+                            <th key={dt} className="text-center px-3 py-2.5 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 whitespace-nowrap min-w-[90px]">{dt}</th>
                           ))}
-                          <th className="text-center px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest text-indigo-400 min-w-[70px]">Total</th>
+                          <th className="text-center px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest text-indigo-400 dark:text-indigo-400 min-w-[70px]">Total</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -764,37 +763,37 @@ export default function ProductivityPage() {
                           return (
                             <tr
                               key={day.date}
-                              className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${
+                              className={`border-b border-slate-100 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors ${
                                 i === dailySummary.length - 1 ? "border-b-0" : ""
                               }`}
                             >
-                              <td className="px-5 py-2.5 font-medium text-slate-600 sticky left-0 bg-white">{fmtDate(day.date)}</td>
+                              <td className="px-5 py-2.5 font-medium text-slate-600 dark:text-zinc-300 sticky left-0 bg-white dark:bg-zinc-900">{fmtDate(day.date)}</td>
                               {allDocTypes.map(dt => {
                                 const count = day.counts[dt] ?? 0;
                                 return (
                                   <td key={dt} className="text-center px-3 py-2.5 tabular-nums">
                                     {count > 0
-                                      ? <span className="font-semibold text-slate-700">{count}</span>
-                                      : <span className="text-slate-300">—</span>
+                                      ? <span className="font-semibold text-slate-700 dark:text-zinc-200">{count}</span>
+                                      : <span className="text-slate-300 dark:text-zinc-600">—</span>
                                     }
-                                  </td>
+                                   </td>
                                 );
                               })}
-                              <td className="text-center px-4 py-2.5 font-bold text-indigo-600 tabular-nums">{dayTotal}</td>
+                              <td className="text-center px-4 py-2.5 font-bold text-indigo-600 dark:text-indigo-400 tabular-nums">{dayTotal}</td>
                             </tr>
                           );
                         })}
                         {/* Column totals row */}
-                        <tr className="bg-slate-50 border-t border-slate-200">
-                          <td className="px-5 py-2.5 text-xs font-bold text-slate-500 uppercase sticky left-0 bg-slate-50">Total</td>
+                        <tr className="bg-slate-50 dark:bg-zinc-800 border-t border-slate-200 dark:border-zinc-700">
+                          <td className="px-5 py-2.5 text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase sticky left-0 bg-slate-50 dark:bg-zinc-800">Total</td>
                           {allDocTypes.map(dt => (
-                            <td key={dt} className="text-center px-3 py-2.5 font-bold text-slate-700 tabular-nums">
+                            <td key={dt} className="text-center px-3 py-2.5 font-bold text-slate-700 dark:text-zinc-200 tabular-nums">
                               {globalDocTypeCounts[dt] ?? 0}
-                            </td>
+                             </td>
                           ))}
-                          <td className="text-center px-4 py-2.5 font-bold text-indigo-600 tabular-nums">
+                          <td className="text-center px-4 py-2.5 font-bold text-indigo-600 dark:text-indigo-400 tabular-nums">
                             {Object.values(globalDocTypeCounts).reduce((a, b) => a + b, 0)}
-                          </td>
+                           </td>
                         </tr>
                       </tbody>
                     </table>
@@ -821,18 +820,18 @@ export default function ProductivityPage() {
               >
                 <div className="flex items-center gap-2">
                   {collapsed
-                    ? <ChevronRight size={13} className="text-slate-400" />
-                    : <ChevronDown size={13} className="text-indigo-500" />
+                    ? <ChevronRight size={13} className="text-slate-400 dark:text-zinc-500" />
+                    : <ChevronDown size={13} className="text-indigo-500 dark:text-indigo-400" />
                   }
-                  <div className="w-2 h-2 rounded-full bg-indigo-500" />
-                  <h2 className="text-xs font-bold text-slate-700 uppercase tracking-widest">{group}</h2>
+                  <div className="w-2 h-2 rounded-full bg-indigo-500 dark:bg-indigo-400" />
+                  <h2 className="text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-widest">{group}</h2>
                 </div>
-                <div className="flex-1 h-px bg-slate-200" />
-                <div className="flex items-center gap-4 text-[11px] text-slate-400">
+                <div className="flex-1 h-px bg-slate-200 dark:bg-zinc-700" />
+                <div className="flex items-center gap-4 text-[11px] text-slate-400 dark:text-zinc-500">
                   <span>{rows.length} agent{rows.length !== 1 ? "s" : ""}</span>
-                  <span>Vol: <span className="text-slate-600 font-semibold">{groupVolume}</span></span>
-                  <span>Total THT: <span className="text-indigo-500 font-mono font-semibold">{formatHms(groupTat)}</span></span>
-                  <span>Avg Completion: <span className="text-green-600 font-semibold">{groupAvgCompl.toFixed(1)}%</span></span>
+                  <span>Vol: <span className="text-slate-600 dark:text-zinc-300 font-semibold">{groupVolume}</span></span>
+                  <span>Total THT: <span className="text-indigo-500 dark:text-indigo-400 font-mono font-semibold">{formatHms(groupTat)}</span></span>
+                  <span>Avg Completion: <span className="text-green-600 dark:text-green-400 font-semibold">{groupAvgCompl.toFixed(1)}%</span></span>
                 </div>
               </button>
 
@@ -846,11 +845,11 @@ export default function ProductivityPage() {
           <div className="mb-5">
             <div className="flex items-center gap-3 mb-2">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-slate-400" />
-                <h2 className="text-xs font-bold text-slate-700 uppercase tracking-widest">All Agents</h2>
+                <div className="w-2 h-2 rounded-full bg-slate-400 dark:bg-zinc-500" />
+                <h2 className="text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-widest">All Agents</h2>
               </div>
-              <div className="flex-1 h-px bg-slate-200" />
-              <span className="text-[11px] text-slate-400">{flatRows.length} agents</span>
+              <div className="flex-1 h-px bg-slate-200 dark:bg-zinc-700" />
+              <span className="text-[11px] text-slate-400 dark:text-zinc-500">{flatRows.length} agents</span>
             </div>
             {renderAgentTable(flatRows)}
           </div>
@@ -858,15 +857,15 @@ export default function ProductivityPage() {
 
         {/* ── Overall totals ── */}
         {!loading && allRows.length > 0 && (
-          <div className="mt-2 bg-white border border-indigo-200 rounded-2xl overflow-hidden">
+          <div className="mt-2 bg-white dark:bg-zinc-900 border border-indigo-200 dark:border-indigo-800 rounded-2xl overflow-hidden">
             <table className="w-full text-sm">
               <tbody>
                 <tr>
                   <td className="px-5 py-3.5 w-8"></td>
-                  <td className="px-5 py-3.5 font-bold text-slate-700 uppercase tracking-wider text-xs">Overall Total</td>
-                  <td className="text-center px-4 py-3.5 font-mono text-indigo-500 font-bold text-xs">{formatHms(totalTat)}</td>
-                  <td className="text-center px-4 py-3.5 text-slate-300 text-xs">—</td>
-                  <td className="text-center px-4 py-3.5 text-slate-900 font-bold">{totalVolume}</td>
+                  <td className="px-5 py-3.5 font-bold text-slate-700 dark:text-zinc-200 uppercase tracking-wider text-xs">Overall Total</td>
+                  <td className="text-center px-4 py-3.5 font-mono text-indigo-500 dark:text-indigo-400 font-bold text-xs">{formatHms(totalTat)}</td>
+                  <td className="text-center px-4 py-3.5 text-slate-300 dark:text-zinc-600 text-xs">—</td>
+                  <td className="text-center px-4 py-3.5 text-slate-900 dark:text-zinc-100 font-bold">{totalVolume}</td>
                   <td className="px-4 py-3.5 min-w-[140px]">
                     <RateBar value={avgCompletion} color="bg-green-500" />
                   </td>

@@ -55,9 +55,9 @@ function formatTat(sec?: number) {
 function today() { return new Date().toISOString().split("T")[0]; }
 
 const STATUS_STYLES: Record<TxStatus, string> = {
-  COMPLETION: "bg-green-100 border-green-200 text-green-700",
-  PENDING:    "bg-amber-100 border-amber-200 text-amber-700",
-  ESCALATION: "bg-purple-100 border-purple-200 text-purple-700",
+  COMPLETION: "bg-green-100 dark:bg-green-950/50 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400",
+  PENDING:    "bg-amber-100 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400",
+  ESCALATION: "bg-purple-100 dark:bg-purple-950/50 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-400",
 };
 
 function statusLabel(s: TxStatus) {
@@ -78,21 +78,21 @@ function DocTypeBreakdown({
   const active = allDocTypes.filter(dt => (counts[dt] ?? 0) > 0);
   if (active.length === 0) return null;
   return (
-    <tr className="bg-indigo-50/40 border-b border-indigo-100">
+    <tr className="bg-indigo-50/40 dark:bg-indigo-950/30 border-b border-indigo-100 dark:border-indigo-900">
       <td colSpan={8} className="px-6 py-2.5 pl-16">
         <div className="flex flex-wrap gap-x-6 gap-y-1.5">
           {active.map(dt => {
             const count = counts[dt] ?? 0;
             return (
               <div key={dt} className="flex items-center gap-2 min-w-[140px]">
-                <span className="text-[11px] text-slate-500 w-28 truncate">{dt}</span>
-                <div className="flex-1 h-1 bg-slate-200 rounded-full overflow-hidden w-16">
+                <span className="text-[11px] text-slate-500 dark:text-zinc-400 w-28 truncate">{dt}</span>
+                <div className="flex-1 h-1 bg-slate-200 dark:bg-zinc-700 rounded-full overflow-hidden w-16">
                   <div
                     className="h-full bg-indigo-400 rounded-full"
                     style={{ width: `${(count / maxCount) * 100}%` }}
                   />
                 </div>
-                <span className="text-[11px] font-semibold text-indigo-600 tabular-nums w-5 text-right">
+                <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 tabular-nums w-5 text-right">
                   {count}
                 </span>
               </div>
@@ -605,7 +605,7 @@ export function EodReportClient() {
         <React.Fragment key={row.agentId}>
           {/* Agent summary row */}
           <tr
-            className={`border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer ${
+            className={`border-b border-slate-100 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer ${
               isLast && !txOpen && !dtOpen ? "border-b-0" : ""
             }`}
             onClick={() => toggleTx(row.agentId)}
@@ -613,22 +613,22 @@ export function EodReportClient() {
             <td className="px-5 py-3.5">
               <div className="flex items-center gap-2.5">
                 {txOpen
-                  ? <ChevronDown  size={13} className="text-slate-400" />
-                  : <ChevronRight size={13} className="text-slate-400" />}
+                  ? <ChevronDown  size={13} className="text-slate-400 dark:text-zinc-500" />
+                  : <ChevronRight size={13} className="text-slate-400 dark:text-zinc-500" />}
                 <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                   {row.agentName.slice(0, 2).toUpperCase()}
                 </div>
-                <span className="text-slate-700 font-medium">{row.agentName}</span>
+                <span className="text-slate-700 dark:text-zinc-200 font-medium">{row.agentName}</span>
               </div>
             </td>
-            <td className="text-center px-4 py-3.5 font-mono text-indigo-500 font-semibold text-xs">
+            <td className="text-center px-4 py-3.5 font-mono text-indigo-500 dark:text-indigo-400 font-semibold text-xs">
               {formatTat(row.totalTat)}
             </td>
-            <td className="text-center px-4 py-3.5 text-green-600 font-semibold">{row.completion}</td>
-            <td className="text-center px-4 py-3.5 text-amber-500 font-semibold">{row.pending || 0}</td>
-            <td className="text-center px-4 py-3.5 text-purple-500 font-semibold">{row.escalation || 0}</td>
-            <td className="text-center px-4 py-3.5 text-slate-700 font-semibold">{row.total}</td>
-            <td className="text-center px-4 py-3.5 font-mono text-indigo-500 text-xs font-semibold">
+            <td className="text-center px-4 py-3.5 text-green-600 dark:text-green-400 font-semibold">{row.completion}</td>
+            <td className="text-center px-4 py-3.5 text-amber-500 dark:text-amber-400 font-semibold">{row.pending || 0}</td>
+            <td className="text-center px-4 py-3.5 text-purple-500 dark:text-purple-400 font-semibold">{row.escalation || 0}</td>
+            <td className="text-center px-4 py-3.5 text-slate-700 dark:text-zinc-200 font-semibold">{row.total}</td>
+            <td className="text-center px-4 py-3.5 font-mono text-indigo-500 dark:text-indigo-400 text-xs font-semibold">
               {formatTat(row.aht)}
             </td>
             {/* Doc-type toggle button */}
@@ -639,8 +639,8 @@ export function EodReportClient() {
                   title="Toggle Task type breakdown"
                   className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[10px] font-semibold transition-all ${
                     dtOpen
-                      ? "bg-indigo-100 border-indigo-200 text-indigo-600"
-                      : "bg-slate-50 border-slate-200 text-slate-400 hover:border-indigo-200 hover:text-indigo-500"
+                      ? "bg-indigo-100 dark:bg-indigo-950/50 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400"
+                      : "bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-400 dark:text-zinc-500 hover:border-indigo-200 dark:hover:border-indigo-700 hover:text-indigo-500 dark:hover:text-indigo-400"
                   }`}
                 >
                   Tasks
@@ -660,13 +660,13 @@ export function EodReportClient() {
           {/* Transaction detail */}
           {txOpen && (
             <tr>
-              <td colSpan={8} className="bg-slate-50 border-b border-slate-100 px-6 py-3">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
+              <td colSpan={8} className="bg-slate-50 dark:bg-zinc-800/50 border-b border-slate-100 dark:border-zinc-800 px-6 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-2">
                   {row.agentName} — {row.transactions.length} Transaction{row.transactions.length !== 1 ? "s" : ""}
                 </p>
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="text-slate-400">
+                    <tr className="text-slate-400 dark:text-zinc-500">
                       <th className="text-left py-1.5 pr-4 font-semibold">#</th>
                       <th className="text-left py-1.5 pr-4 font-semibold">ID</th>
                       <th className="text-left py-1.5 pr-4 font-semibold">Type of Tasks</th>
@@ -680,20 +680,20 @@ export function EodReportClient() {
                   </thead>
                   <tbody>
                     {row.transactions.map((tx, j) => (
-                      <tr key={tx._id} className="border-t border-slate-100">
-                        <td className="py-2 pr-4 text-slate-400">{j + 1}</td>
-                        <td className="py-2 pr-4 font-mono text-slate-600 font-semibold">{tx.txId}</td>
-                        <td className="py-2 pr-4 text-slate-500">{tx.docType}</td>
-                        <td className="py-2 pr-4 text-slate-500 max-w-[120px] truncate">{tx.companyName}</td>
-                        <td className="py-2 pr-4 font-mono text-slate-500">{tx.startTime}</td>
-                        <td className="py-2 pr-4 font-mono text-slate-500">{tx.endTime ?? "—"}</td>
-                        <td className="py-2 pr-4 font-mono text-indigo-500 font-semibold">{formatTat(tx.tat)}</td>
+                      <tr key={tx._id} className="border-t border-slate-100 dark:border-zinc-800">
+                        <td className="py-2 pr-4 text-slate-400 dark:text-zinc-500">{j + 1}</td>
+                        <td className="py-2 pr-4 font-mono text-slate-600 dark:text-zinc-300 font-semibold">{tx.txId}</td>
+                        <td className="py-2 pr-4 text-slate-500 dark:text-zinc-400">{tx.docType}</td>
+                        <td className="py-2 pr-4 text-slate-500 dark:text-zinc-400 max-w-[120px] truncate">{tx.companyName}</td>
+                        <td className="py-2 pr-4 font-mono text-slate-500 dark:text-zinc-400">{tx.startTime}</td>
+                        <td className="py-2 pr-4 font-mono text-slate-500 dark:text-zinc-400">{tx.endTime ?? "—"}</td>
+                        <td className="py-2 pr-4 font-mono text-indigo-500 dark:text-indigo-400 font-semibold">{formatTat(tx.tat)}</td>
                         <td className="py-2 pr-4">
                           <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-semibold ${STATUS_STYLES[tx.status]}`}>
                             {statusLabel(tx.status)}
                           </span>
                         </td>
-                        <td className="py-2 text-slate-400">{tx.notes || "—"}</td>
+                        <td className="py-2 text-slate-400 dark:text-zinc-500">{tx.notes || "—"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -707,31 +707,31 @@ export function EodReportClient() {
 
   /* ── Agent table shell ── */
   const renderTable = (rows: AgentRow[], gTat: number, gTotal: number, gComp: number, gPend: number, gEsc: number, gAht: number, showSubtotal: boolean) => (
-    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl overflow-hidden">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-slate-200">
-            <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Agent</th>
-            <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-indigo-400">Total Handle Time</th>
-            <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-green-600"># Completion</th>
-            <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-amber-500"># Pending</th>
-            <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-purple-500"># Escalation</th>
-            <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Total TX</th>
-            <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-indigo-400">AHT per TX</th>
-            <th className="w-20 px-3 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-300 text-right">Tasks</th>
+          <tr className="border-b border-slate-200 dark:border-zinc-700">
+            <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Agent</th>
+            <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-indigo-400 dark:text-indigo-400">Total Handle Time</th>
+            <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-green-600 dark:text-green-500"># Completion</th>
+            <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-amber-500 dark:text-amber-400"># Pending</th>
+            <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-purple-500 dark:text-purple-400"># Escalation</th>
+            <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Total TX</th>
+            <th className="text-center px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-indigo-400 dark:text-indigo-400">AHT per TX</th>
+            <th className="w-20 px-3 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-300 dark:text-zinc-600 text-right">Tasks</th>
           </tr>
         </thead>
         <tbody>
           {renderAgentRows(rows)}
           {showSubtotal && rows.length > 1 && (
-            <tr className="bg-slate-50 border-t border-slate-200">
-              <td className="px-5 py-2.5 text-xs font-bold text-slate-400 uppercase tracking-wider pl-14">Subtotal</td>
-              <td className="text-center px-4 py-2.5 font-mono text-indigo-500 font-bold text-xs">{formatTat(gTat)}</td>
-              <td className="text-center px-4 py-2.5 text-green-600 font-bold">{gComp}</td>
-              <td className="text-center px-4 py-2.5 text-amber-500 font-bold">{gPend}</td>
-              <td className="text-center px-4 py-2.5 text-purple-500 font-bold">{gEsc}</td>
-              <td className="text-center px-4 py-2.5 text-slate-700 font-bold">{gTotal}</td>
-              <td className="text-center px-4 py-2.5 font-mono text-indigo-500 text-xs font-bold">{formatTat(gAht)}</td>
+            <tr className="bg-slate-50 dark:bg-zinc-800/50 border-t border-slate-200 dark:border-zinc-700">
+              <td className="px-5 py-2.5 text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider pl-14">Subtotal</td>
+              <td className="text-center px-4 py-2.5 font-mono text-indigo-500 dark:text-indigo-400 font-bold text-xs">{formatTat(gTat)}</td>
+              <td className="text-center px-4 py-2.5 text-green-600 dark:text-green-400 font-bold">{gComp}</td>
+              <td className="text-center px-4 py-2.5 text-amber-500 dark:text-amber-400 font-bold">{gPend}</td>
+              <td className="text-center px-4 py-2.5 text-purple-500 dark:text-purple-400 font-bold">{gEsc}</td>
+              <td className="text-center px-4 py-2.5 text-slate-700 dark:text-zinc-200 font-bold">{gTotal}</td>
+              <td className="text-center px-4 py-2.5 font-mono text-indigo-500 dark:text-indigo-400 text-xs font-bold">{formatTat(gAht)}</td>
               <td />
             </tr>
           )}
@@ -741,15 +741,15 @@ export function EodReportClient() {
   );
 
   return (
-    <div className="min-h-dvh bg-slate-50">
+    <div className="min-h-dvh bg-slate-50 dark:bg-zinc-950">
       <main className="max-w-5xl mx-auto px-6 py-8">
 
         {/* ── Header ── */}
         <div className="flex items-start justify-between mb-6">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-indigo-500 mb-1">KPI</p>
-            <h1 className="text-xl font-semibold text-slate-900 tracking-tight">Agent Daily Production</h1>
-            <p className="text-slate-400 text-sm mt-0.5">{formattedDate}</p>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-indigo-500 dark:text-indigo-400 mb-1">KPI</p>
+            <h1 className="text-xl font-semibold text-slate-900 dark:text-zinc-100 tracking-tight">Agent Daily Production</h1>
+            <p className="text-slate-400 dark:text-zinc-500 text-sm mt-0.5">{formattedDate}</p>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -757,24 +757,24 @@ export function EodReportClient() {
               type="date"
               value={date}
               onChange={e => setDate(e.target.value)}
-              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition-all"
+              className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm text-slate-700 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all"
             />
             <button
               onClick={() => setDate(today())}
-              className="px-3 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-500 text-xs font-semibold hover:bg-indigo-100 transition-colors"
+              className="px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-500 dark:text-indigo-400 text-xs font-semibold hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
             >
               Today
             </button>
 
-            <div className="h-6 w-px bg-slate-200 mx-1" />
+            <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700 mx-1" />
 
             {/* Group / Ungroup toggle */}
             <button
               onClick={() => setIsGrouped(g => !g)}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
                 isGrouped
-                  ? "bg-slate-700 border-slate-700 text-white hover:bg-slate-800"
-                  : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                  ? "bg-slate-700 dark:bg-slate-600 border-slate-700 dark:border-slate-600 text-white hover:bg-slate-800 dark:hover:bg-slate-700"
+                  : "bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700"
               }`}
               title={isGrouped ? "Switch to ungrouped view" : "Switch to grouped view"}
             >
@@ -782,7 +782,7 @@ export function EodReportClient() {
               {isGrouped ? "Grouped" : "Ungrouped"}
             </button>
 
-            <div className="h-6 w-px bg-slate-200 mx-1" />
+            <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700 mx-1" />
 
             <button
               onClick={handleExcelExport}
@@ -790,8 +790,8 @@ export function EodReportClient() {
               title={canExport ? "Export to Excel" : "No data to export"}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
                 canExport
-                  ? "bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-100"
-                  : "bg-slate-50 border-slate-200 text-slate-300 cursor-not-allowed"
+                  ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
+                  : "bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-300 dark:text-zinc-600 cursor-not-allowed"
               }`}
             >
               <FileSpreadsheet size={13} />
@@ -804,8 +804,8 @@ export function EodReportClient() {
               title={canExport ? "Export to PDF" : "No data to export"}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
                 canExport
-                  ? "bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100"
-                  : "bg-slate-50 border-slate-200 text-slate-300 cursor-not-allowed"
+                  ? "bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50"
+                  : "bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-300 dark:text-zinc-600 cursor-not-allowed"
               }`}
             >
               <FileText size={13} />
@@ -817,72 +817,72 @@ export function EodReportClient() {
         {/* ── Summary cards ── */}
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-6">
           {[
-            { label: "Total TX",      value: totals.total,          color: "text-slate-700"  },
-            { label: "Completion",    value: totals.completion,     color: "text-green-600"  },
-            { label: "Pending",       value: totals.pending,        color: "text-amber-500"  },
-            { label: "Escalation",    value: totals.escalation,     color: "text-purple-500" },
-            { label: "Active Agents", value: activeAgents,          color: "text-indigo-600" },
-            { label: "Overall AHT",   value: formatTat(overallAht), color: "text-indigo-600" },
-            { label: "Productivity Hours",   value: formatTat(totals.totalTat),       color: "text-emerald-600" },
+            { label: "Total TX",      value: totals.total,          color: "text-slate-700 dark:text-zinc-200"  },
+            { label: "Completion",    value: totals.completion,     color: "text-green-600 dark:text-green-400"  },
+            { label: "Pending",       value: totals.pending,        color: "text-amber-500 dark:text-amber-400"  },
+            { label: "Escalation",    value: totals.escalation,     color: "text-purple-500 dark:text-purple-400" },
+            { label: "Active Agents", value: activeAgents,          color: "text-indigo-600 dark:text-indigo-400" },
+            { label: "Overall AHT",   value: formatTat(overallAht), color: "text-indigo-600 dark:text-indigo-400" },
+            { label: "Productivity Hours",   value: formatTat(totals.totalTat),       color: "text-emerald-600 dark:text-emerald-400" },
           ].map(s => (
-            <div key={s.label} className="bg-white border border-slate-200 rounded-2xl px-4 py-3.5 text-center">
+            <div key={s.label} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl px-4 py-3.5 text-center">
               <p className={`text-lg font-bold leading-tight ${s.color}`}>{s.value}</p>
-              <p className="text-[10px] text-slate-400 uppercase tracking-wide mt-0.5">{s.label}</p>
+              <p className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide mt-0.5">{s.label}</p>
             </div>
           ))}
         </div>
 
         {loading && (
-          <div className="text-center py-12 text-slate-400 text-sm">Loading…</div>
+          <div className="text-center py-12 text-slate-400 dark:text-zinc-500 text-sm">Loading…</div>
         )}
 
         {!loading && groups.length === 0 && (
-          <div className="text-center py-16 bg-white border border-slate-200 rounded-2xl">
-            <p className="text-slate-500 text-sm">No data for this date.</p>
+          <div className="text-center py-16 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl">
+            <p className="text-slate-500 dark:text-zinc-400 text-sm">No data for this date.</p>
           </div>
         )}
 
         {/* ── Tasks Summary Panel ── */}
         {!loading && allDocTypes.length > 0 && (
-          <div className="mb-5 bg-white border border-slate-200 rounded-2xl overflow-hidden">
+          <div className="mb-5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl overflow-hidden">
             <button
               onClick={() => setShowDocSummary(s => !s)}
-              className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-slate-50 transition-colors"
+              className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors"
             >
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-green-500" />
-                  <span className="text-xs font-bold text-slate-700 uppercase tracking-widest">Tasks Summary</span>
+                  <span className="text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-widest">Tasks Summary</span>
                 </div>
-                <span className="text-[11px] text-slate-400">
+                <span className="text-[11px] text-slate-400 dark:text-zinc-500">
                   {allDocTypes.length} type{allDocTypes.length !== 1 ? "s" : ""} · {Object.values(globalDocTypeCounts).reduce((a, b) => a + b, 0)} total transactions
                 </span>
               </div>
               <ChevronDown
                 size={14}
-                className={`text-slate-400 transition-transform duration-200 ${showDocSummary ? "rotate-180" : ""}`}
+                className={`text-slate-400 dark:text-zinc-500 transition-transform duration-200 ${showDocSummary ? "rotate-180" : ""}`}
               />
             </button>
 
             {showDocSummary && (
-              <div className="border-t border-slate-200 px-5 py-4">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Overall Totals</p>
+              <div className="border-t border-slate-200 dark:border-zinc-700 px-5 py-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-3">Overall Totals</p>
                 <div className="flex flex-wrap gap-3">
                   {allDocTypes.map(dt => {
                     const count    = globalDocTypeCounts[dt] ?? 0;
                     const maxCount = Math.max(...Object.values(globalDocTypeCounts), 1);
                     return (
-                      <div key={dt} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 min-w-[150px]">
+                      <div key={dt} className="flex items-center gap-2 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 min-w-[150px]">
                         <div className="flex-1">
-                          <p className="text-[11px] text-slate-500 truncate">{dt}</p>
+                          <p className="text-[11px] text-slate-500 dark:text-zinc-400 truncate">{dt}</p>
                           <div className="flex items-center gap-1.5 mt-1">
-                            <div className="flex-1 h-1 bg-slate-200 rounded-full overflow-hidden">
+                            <div className="flex-1 h-1 bg-slate-200 dark:bg-zinc-700 rounded-full overflow-hidden">
                               <div
                                 className="h-full bg-indigo-400 rounded-full transition-all duration-500"
                                 style={{ width: `${(count / maxCount) * 100}%` }}
                               />
                             </div>
-                            <span className="text-xs font-bold text-indigo-600 tabular-nums">{count}</span>
+                            <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 tabular-nums">{count}</span>
                           </div>
                         </div>
                       </div>
@@ -914,19 +914,19 @@ export function EodReportClient() {
               >
                 <div className="flex items-center gap-2">
                   {collapsed
-                    ? <ChevronRight size={13} className="text-slate-400" />
-                    : <ChevronDown  size={13} className="text-indigo-500" />}
-                  <div className="w-2 h-2 rounded-full bg-indigo-500" />
-                  <h2 className="text-xs font-bold text-slate-700 uppercase tracking-widest">{group}</h2>
+                    ? <ChevronRight size={13} className="text-slate-400 dark:text-zinc-500" />
+                    : <ChevronDown  size={13} className="text-indigo-500 dark:text-indigo-400" />}
+                  <div className="w-2 h-2 rounded-full bg-indigo-500 dark:bg-indigo-400" />
+                  <h2 className="text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-widest">{group}</h2>
                 </div>
-                <div className="flex-1 h-px bg-slate-200" />
-                <div className="flex items-center gap-4 text-[11px] text-slate-400">
+                <div className="flex-1 h-px bg-slate-200 dark:bg-zinc-700" />
+                <div className="flex items-center gap-4 text-[11px] text-slate-400 dark:text-zinc-500">
                   <span>{rows.length} agent{rows.length !== 1 ? "s" : ""}</span>
-                  <span>THT: <span className="text-indigo-500 font-mono font-semibold">{formatTat(gTat)}</span></span>
-                  <span>Completion: <span className="text-green-600 font-semibold">{gComp}</span></span>
-                  <span>Pending: <span className="text-amber-500 font-semibold">{gPend}</span></span>
-                  <span>Escalation: <span className="text-purple-500 font-semibold">{gEsc}</span></span>
-                  <span>Total TX: <span className="text-slate-600 font-semibold">{gTotal}</span></span>
+                  <span>THT: <span className="text-indigo-500 dark:text-indigo-400 font-mono font-semibold">{formatTat(gTat)}</span></span>
+                  <span>Completion: <span className="text-green-600 dark:text-green-400 font-semibold">{gComp}</span></span>
+                  <span>Pending: <span className="text-amber-500 dark:text-amber-400 font-semibold">{gPend}</span></span>
+                  <span>Escalation: <span className="text-purple-500 dark:text-purple-400 font-semibold">{gEsc}</span></span>
+                  <span>Total TX: <span className="text-slate-600 dark:text-zinc-300 font-semibold">{gTotal}</span></span>
                 </div>
               </button>
 
@@ -940,11 +940,11 @@ export function EodReportClient() {
           <div className="mb-5">
             <div className="flex items-center gap-3 mb-2">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-slate-400" />
-                <h2 className="text-xs font-bold text-slate-700 uppercase tracking-widest">All Agents</h2>
+                <div className="w-2 h-2 rounded-full bg-slate-400 dark:bg-zinc-500" />
+                <h2 className="text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-widest">All Agents</h2>
               </div>
-              <div className="flex-1 h-px bg-slate-200" />
-              <span className="text-[11px] text-slate-400">{flatRows.length} agents</span>
+              <div className="flex-1 h-px bg-slate-200 dark:bg-zinc-700" />
+              <span className="text-[11px] text-slate-400 dark:text-zinc-500">{flatRows.length} agents</span>
             </div>
             {renderTable(
               flatRows,
@@ -958,17 +958,17 @@ export function EodReportClient() {
 
         {/* ── Overall totals ── */}
         {!loading && allRows.length > 0 && (
-          <div className="mt-2 bg-white border border-indigo-200 rounded-2xl overflow-hidden">
+          <div className="mt-2 bg-white dark:bg-zinc-900 border border-indigo-200 dark:border-indigo-800 rounded-2xl overflow-hidden">
             <table className="w-full text-sm">
               <tbody>
                 <tr>
-                  <td className="px-5 py-3.5 font-bold text-slate-700 uppercase tracking-wider text-xs">Overall Total</td>
-                  <td className="text-center px-4 py-3.5 font-mono text-indigo-500 font-bold text-xs">{formatTat(totals.totalTat)}</td>
-                  <td className="text-center px-4 py-3.5 text-green-600 font-bold">{totals.completion}</td>
-                  <td className="text-center px-4 py-3.5 text-amber-500 font-bold">{totals.pending}</td>
-                  <td className="text-center px-4 py-3.5 text-purple-500 font-bold">{totals.escalation}</td>
-                  <td className="text-center px-4 py-3.5 text-slate-900 font-bold">{totals.total}</td>
-                  <td className="text-center px-4 py-3.5 font-mono text-indigo-500 text-xs font-bold">{formatTat(overallAht)}</td>
+                  <td className="px-5 py-3.5 font-bold text-slate-700 dark:text-zinc-200 uppercase tracking-wider text-xs">Overall Total</td>
+                  <td className="text-center px-4 py-3.5 font-mono text-indigo-500 dark:text-indigo-400 font-bold text-xs">{formatTat(totals.totalTat)}</td>
+                  <td className="text-center px-4 py-3.5 text-green-600 dark:text-green-400 font-bold">{totals.completion}</td>
+                  <td className="text-center px-4 py-3.5 text-amber-500 dark:text-amber-400 font-bold">{totals.pending}</td>
+                  <td className="text-center px-4 py-3.5 text-purple-500 dark:text-purple-400 font-bold">{totals.escalation}</td>
+                  <td className="text-center px-4 py-3.5 text-slate-900 dark:text-zinc-100 font-bold">{totals.total}</td>
+                  <td className="text-center px-4 py-3.5 font-mono text-indigo-500 dark:text-indigo-400 text-xs font-bold">{formatTat(overallAht)}</td>
                   <td className="w-20" />
                 </tr>
               </tbody>

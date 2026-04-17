@@ -5,132 +5,250 @@ import Transaction from "@/models/Transaction";
 
 // GET /api/kpi/transactions?date=YYYY-MM-DD&agentId=xxx
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const session = await auth();
+    if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { searchParams } = new URL(req.url);
-  const date    = searchParams.get("date");
-  const agentId = searchParams.get("agentId");
+    const { searchParams } = new URL(req.url);
+    const date    = searchParams.get("date");
+    const agentId = searchParams.get("agentId");
 
-  await connectDB();
+    await connectDB();
 
-  const query: Record<string, string> = { ownerEmail: session.user.email };
-  if (date)    query.date    = date;
-  if (agentId) query.agentId = agentId;
+    const query: Record<string, string> = { ownerEmail: session.user.email };
+    if (date)    query.date    = date;
+    if (agentId) query.agentId = agentId;
 
-  const transactions = await Transaction.find(query).sort({ createdAt: -1 }).lean();
-  return NextResponse.json({ transactions });
+    const transactions = await Transaction.find(query).sort({ createdAt: -1 }).lean();
+    return NextResponse.json({ transactions });
+  } catch (err) {
+    console.error("[GET /api/kpi/transactions]", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }
 
 // POST /api/kpi/transactions — create a new transaction
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const session = await auth();
+    if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await req.json();
-  const {
-    agentId, agentName, docType, companyName, volume,
-    date, status, notes,
-    startEpoch,
-    elapsedSeconds,
-    taskCategory,
-  } = body;
+    const body = await req.json();
+    const {
+      agentId, agentName, docType, companyName, volume,
+      date, status, notes,
+      startEpoch,
+      elapsedSeconds,
+      taskCategory,
+      subtasks,
+      productiveSeconds,
+      timerStartEpoch,
+    } = body;
 
-  if (!agentId || !agentName || !docType || !companyName || !volume || !date) {
-    return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    // Allow __PROD_TIMER__ sentinel to skip companyName check
+    const isTimerRecord = docType === "__PROD_TIMER__";
+
+    if (!agentId || !agentName || !docType || !date) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+    if (!isTimerRecord && (!companyName || !volume)) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+
+    await connectDB();
+
+    const txId = `TX${Date.now()}`;
+
+    const startTime = new Date(startEpoch ?? Date.now()).toLocaleTimeString("en-PH", {
+      timeZone: "Asia/Manila",
+      hour:     "2-digit",
+      minute:   "2-digit",
+      hour12:   false,
+    });
+
+    const VALID_STATUSES = ["PENDING", "COMPLETION", "ESCALATION", "HOLD"];
+    const resolvedStatus = VALID_STATUSES.includes(status) ? status : "PENDING";
+
+    // Normalize subtasks — ensure each has a valid status and taskCategory
+    const normalizedSubtasks = (subtasks ?? []).map((st: {
+      docType: string;
+      number?: number;
+      notes?: string;
+      status?: string;
+      taskCategory?: string;
+    }) => ({
+      docType:      st.docType,
+      number:       st.number ?? undefined,
+      notes:        st.notes  || undefined,
+      status:       VALID_STATUSES.includes(st.status ?? "") ? st.status : "PENDING",
+      taskCategory: st.taskCategory ?? "Production",
+      createdAt:    Date.now(),
+    }));
+
+    const tx = await Transaction.create({
+      txId,
+      agentId,
+      agentName,
+      docType,
+      companyName:       companyName ?? "__timer__",
+      volume:            Number(volume ?? 1),
+      startTime,
+      startEpoch:        startEpoch ?? Date.now(),
+      date,
+      status:            resolvedStatus,
+      notes:             notes || undefined,
+      ownerEmail:        session.user.email,
+      elapsedSeconds:    elapsedSeconds ?? 0,
+      pausedAt:          null,
+      taskCategory:      taskCategory ?? "Production",
+      subtasks:          normalizedSubtasks,
+      productiveSeconds: productiveSeconds ?? 0,
+      timerStartEpoch:   timerStartEpoch ?? null,
+      timerPaused:       false, // ── ADDED: default false on create
+    });
+
+    return NextResponse.json({ transaction: tx }, { status: 201 });
+  } catch (err) {
+    console.error("[POST /api/kpi/transactions]", err);
+    const message = err instanceof Error ? err.message : "Internal server error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  await connectDB();
-
-  const txId = `TX${Date.now()}`;
-
-  const startTime = new Date(startEpoch ?? Date.now()).toLocaleTimeString("en-PH", {
-    timeZone: "Asia/Manila",
-    hour:     "2-digit",
-    minute:   "2-digit",
-    hour12:   false,
-  });
-
-  const tx = await Transaction.create({
-    txId,
-    agentId,
-    agentName,
-    docType,
-    companyName,
-    volume:         Number(volume),
-    startTime,
-    startEpoch:     startEpoch ?? Date.now(),
-    date,
-    status:         status || "PENDING",
-    notes:          notes || undefined,
-    ownerEmail:     session.user.email,
-    elapsedSeconds: elapsedSeconds ?? 0,
-    pausedAt:       null,
-    taskCategory:   taskCategory ?? "Production",
-  });
-
-  return NextResponse.json({ transaction: tx }, { status: 201 });
 }
 
-// PATCH /api/kpi/transactions — update timer state, status, end, or metadata
+// PATCH /api/kpi/transactions — update fields, subtasks, or productive seconds
 export async function PATCH(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const session = await auth();
+    if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await req.json();
-  const {
-    id,
-    elapsedSeconds,
-    pausedAt,
-    tat,
-    endEpoch,
-    endTime,
-    status,
-    notes,
-    docType,
-    companyName,
-    volume,
-    startTime,
-    taskCategory,
-  } = body;
+    const body = await req.json();
+    const {
+      id,
+      elapsedSeconds,
+      pausedAt,
+      tat,
+      endEpoch,
+      endTime,
+      status,
+      notes,
+      docType,
+      companyName,
+      volume,
+      startTime,
+      taskCategory,
+      productiveSeconds,
+      subtaskAction,
+      subtask,
+      subtaskId,
+    } = body;
 
-  if (!id) return NextResponse.json({ error: "Transaction ID required" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "Transaction ID required" }, { status: 400 });
 
-  await connectDB();
+    await connectDB();
 
-  const updateData: Record<string, unknown> = {};
+    const VALID_STATUSES = ["PENDING", "COMPLETION", "ESCALATION", "HOLD"];
 
-  if (elapsedSeconds !== undefined) updateData.elapsedSeconds = Number(elapsedSeconds);
-  if (pausedAt      !== undefined) updateData.pausedAt        = pausedAt;
-  if (tat           !== undefined) updateData.tat             = Number(tat);
-  if (endEpoch      !== undefined) updateData.endEpoch        = endEpoch;
-  if (endTime)                     updateData.endTime         = endTime;
-  if (status)                      updateData.status          = status;
-  if (notes         !== undefined) updateData.notes           = notes;
-  if (docType)                     updateData.docType         = docType;
-  if (companyName)                 updateData.companyName     = companyName;
-  if (volume        !== undefined) updateData.volume          = Number(volume);
-  if (startTime)                   updateData.startTime       = startTime;
-  if (taskCategory)                updateData.taskCategory    = taskCategory;
+    /* ── Subtask mutations ── */
+    if (subtaskAction === "ADD") {
+      if (!subtask?.docType) {
+        return NextResponse.json({ error: "Missing subtask docType" }, { status: 400 });
+      }
+      const tx = await Transaction.findOneAndUpdate(
+        { _id: id, ownerEmail: session.user.email },
+        {
+          $push: {
+            subtasks: {
+              docType:      subtask.docType,
+              number:       subtask.number ?? undefined,
+              notes:        subtask.notes || undefined,
+              status:       VALID_STATUSES.includes(subtask.status) ? subtask.status : "PENDING",
+              taskCategory: subtask.taskCategory ?? "Production",
+              createdAt:    Date.now(),
+            },
+          },
+        },
+        { new: true }
+      );
+      if (!tx) return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json({ transaction: tx });
+    }
 
-  const tx = await Transaction.findOneAndUpdate(
-    { _id: id, ownerEmail: session.user.email },
-    { $set: updateData },
-    { new: true }
-  );
+    if (subtaskAction === "UPDATE") {
+      if (!subtaskId) return NextResponse.json({ error: "subtaskId required" }, { status: 400 });
+      const updateFields: Record<string, unknown> = {};
+      if (subtask?.docType)              updateFields["subtasks.$.docType"]      = subtask.docType;
+      if (subtask?.number !== undefined)  updateFields["subtasks.$.number"]      = subtask.number;
+      if (subtask?.notes  !== undefined)  updateFields["subtasks.$.notes"]       = subtask.notes;
+      if (subtask?.status)                updateFields["subtasks.$.status"]      = subtask.status;
+      if (subtask?.taskCategory)          updateFields["subtasks.$.taskCategory"] = subtask.taskCategory;
 
-  if (!tx) return NextResponse.json({ error: "Not found" }, { status: 404 });
+      const tx = await Transaction.findOneAndUpdate(
+        { _id: id, ownerEmail: session.user.email, "subtasks._id": subtaskId },
+        { $set: updateFields },
+        { new: true }
+      );
+      if (!tx) return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json({ transaction: tx });
+    }
 
-  return NextResponse.json({ transaction: tx });
+    if (subtaskAction === "DELETE") {
+      if (!subtaskId) return NextResponse.json({ error: "subtaskId required" }, { status: 400 });
+      const tx = await Transaction.findOneAndUpdate(
+        { _id: id, ownerEmail: session.user.email },
+        { $pull: { subtasks: { _id: subtaskId } } },
+        { new: true }
+      );
+      if (!tx) return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json({ transaction: tx });
+    }
+
+    /* ── Standard field update ── */
+    const updateData: Record<string, unknown> = {};
+    if (elapsedSeconds    !== undefined) updateData.elapsedSeconds    = Number(elapsedSeconds);
+    if (pausedAt          !== undefined) updateData.pausedAt          = pausedAt;
+    if (tat               !== undefined) updateData.tat               = Number(tat);
+    if (endEpoch          !== undefined) updateData.endEpoch          = endEpoch;
+    if (endTime)                         updateData.endTime           = endTime;
+    if (status)                          updateData.status            = status;
+    if (notes             !== undefined) updateData.notes             = notes;
+    if (docType)                         updateData.docType           = docType;
+    if (companyName)                     updateData.companyName       = companyName;
+    if (volume            !== undefined) updateData.volume            = Number(volume);
+    if (startTime)                       updateData.startTime         = startTime;
+    if (taskCategory)                    updateData.taskCategory      = taskCategory;
+    if (productiveSeconds !== undefined) updateData.productiveSeconds = Number(productiveSeconds);
+    if ("timerStartEpoch" in body)       updateData.timerStartEpoch   = body.timerStartEpoch ?? null;
+    if ("timerPaused"     in body)       updateData.timerPaused       = body.timerPaused ?? false; // ── ADDED
+
+    const tx = await Transaction.findOneAndUpdate(
+      { _id: id, ownerEmail: session.user.email },
+      { $set: updateData },
+      { new: true }
+    );
+
+    if (!tx) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json({ transaction: tx });
+  } catch (err) {
+    console.error("[PATCH /api/kpi/transactions]", err);
+    const message = err instanceof Error ? err.message : "Internal server error";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
 
 // DELETE /api/kpi/transactions { id }
 export async function DELETE(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const session = await auth();
+    if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { id } = await req.json();
-  await connectDB();
-  await Transaction.deleteOne({ _id: id, ownerEmail: session.user.email });
-  return NextResponse.json({ success: true });
+    const { id } = await req.json();
+    if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
+
+    await connectDB();
+    await Transaction.deleteOne({ _id: id, ownerEmail: session.user.email });
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error("[DELETE /api/kpi/transactions]", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }

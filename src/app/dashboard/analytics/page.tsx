@@ -354,21 +354,21 @@ async function exportToPdf(
 /* ─── UI sub-components ─── */
 function RankBadge({ rank, total }: { rank: number; total: number }) {
   if (rank === 1) return (
-    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-600 text-[10px] font-bold">
+    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400 text-[10px] font-bold">
       <Award size={9} /> TOP
     </span>
   );
   if (rank === total && total > 1) return (
-    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 border border-red-200 text-red-500 text-[10px] font-bold">
+    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-500 dark:text-red-400 text-[10px] font-bold">
       <TrendingDown size={9} /> LOW
     </span>
   );
-  return <span className="text-slate-400 text-xs font-mono">#{rank}</span>;
+  return <span className="text-slate-400 dark:text-zinc-500 text-xs font-mono">#{rank}</span>;
 }
 
 function MiniBar({ value, max, color }: { value: number; max: number; color: string }) {
   return (
-    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden w-full">
+    <div className="h-1.5 bg-slate-100 dark:bg-zinc-700 rounded-full overflow-hidden w-full">
       <div className={`h-full rounded-full transition-all duration-700 ${color}`}
         style={{ width: `${Math.max(2, (value / Math.max(max, 1)) * 100)}%` }} />
     </div>
@@ -381,7 +381,7 @@ function DonutRing({ pct, color, size = 56 }: { pct: number; color: string; size
   const offset = circ - (pct / 100) * circ;
   return (
     <svg width={size} height={size} className="-rotate-90">
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="currentColor" strokeWidth="4" className="text-slate-100" />
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="currentColor" strokeWidth="4" className="text-slate-100 dark:text-zinc-700" />
       <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="currentColor" strokeWidth="4"
         strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
         className={color} style={{ transition: "stroke-dashoffset 0.8s ease" }} />
@@ -392,7 +392,7 @@ function DonutRing({ pct, color, size = 56 }: { pct: number; color: string; size
 function SortTh({ label, col, sort, onSort }: { label: string; col: SortKey; sort: [SortKey, "asc"|"desc"]; onSort: (c: SortKey) => void }) {
   const active = sort[0] === col;
   return (
-    <th className={`text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-widest cursor-pointer select-none transition-colors ${active ? "text-indigo-500" : "text-slate-400 hover:text-slate-600"}`}
+    <th className={`text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-widest cursor-pointer select-none transition-colors ${active ? "text-indigo-500 dark:text-indigo-400" : "text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300"}`}
       onClick={() => onSort(col)}>
       <span className="flex items-center gap-1">
         {label}
@@ -419,16 +419,16 @@ function StreakAlertPanel({
   const [dismissed, setDismissed] = useState(false);
 
   if (dismissed) return (
-    <div className="mb-6 flex items-center justify-between bg-white border border-slate-200 rounded-2xl px-4 py-3">
+    <div className="mb-6 flex items-center justify-between bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl px-4 py-3">
       <div className="flex items-center gap-2">
         <AlertTriangle size={13} className="text-red-400" />
-        <span className="text-xs text-slate-500">
+        <span className="text-xs text-slate-500 dark:text-zinc-400">
           {alerts.length} agent{alerts.length !== 1 ? "s" : ""} flagged for consecutive low performance
         </span>
       </div>
       <button
         onClick={() => setDismissed(false)}
-        className="text-xs text-indigo-500 hover:text-indigo-700 font-semibold transition-colors"
+        className="text-xs text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-semibold transition-colors"
       >
         Show alerts
       </button>
@@ -436,34 +436,34 @@ function StreakAlertPanel({
   );
 
   return (
-    <div className="mb-6 bg-white border border-red-200 rounded-2xl p-5">
+    <div className="mb-6 bg-white dark:bg-zinc-900 border border-red-200 dark:border-red-800 rounded-2xl p-5">
       {/* Header row */}
       <div className="flex items-start justify-between mb-4 gap-3 flex-wrap">
         <div className="flex items-center gap-2">
-          <AlertTriangle size={14} className="text-red-500 flex-shrink-0" />
-          <h2 className="text-sm font-semibold text-slate-800">Consecutive low-performance alerts</h2>
-          <span className="px-2 py-0.5 rounded-full bg-red-50 border border-red-200 text-red-500 text-[10px] font-bold">
+          <AlertTriangle size={14} className="text-red-500 dark:text-red-400 flex-shrink-0" />
+          <h2 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">Consecutive low-performance alerts</h2>
+          <span className="px-2 py-0.5 rounded-full bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-500 dark:text-red-400 text-[10px] font-bold">
             {alerts.length}
           </span>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-slate-400">Flag after</span>
+            <span className="text-[11px] text-slate-400 dark:text-zinc-500">Flag after</span>
             <select
               value={minStreak}
               onChange={(e) => onChangeMinStreak(Number(e.target.value))}
-              className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-700 focus:outline-none focus:border-indigo-400 transition-colors"
+              className="bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg px-2 py-1 text-xs text-slate-700 dark:text-zinc-200 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 transition-colors"
             >
               <option value={3}>3 days</option>
               <option value={4}>4 days</option>
             </select>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-slate-400">below</span>
+            <span className="text-[11px] text-slate-400 dark:text-zinc-500">below</span>
             <select
               value={rateThreshold}
               onChange={(e) => onChangeRateThreshold(Number(e.target.value))}
-              className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-700 focus:outline-none focus:border-indigo-400 transition-colors"
+              className="bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg px-2 py-1 text-xs text-slate-700 dark:text-zinc-200 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 transition-colors"
             >
               <option value={50}>50%</option>
               <option value={60}>60%</option>
@@ -473,7 +473,7 @@ function StreakAlertPanel({
           </div>
           <button
             onClick={() => setDismissed(true)}
-            className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-400 text-xs font-semibold hover:bg-slate-100 transition-colors"
+            className="px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-400 dark:text-zinc-500 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-zinc-700 transition-colors"
           >
             Dismiss
           </button>
@@ -481,7 +481,7 @@ function StreakAlertPanel({
       </div>
 
       {alerts.length === 0 && (
-        <p className="text-xs text-slate-400 py-4 text-center">
+        <p className="text-xs text-slate-400 dark:text-zinc-500 py-4 text-center">
           No agents flagged for consecutive low performance in this date range.
         </p>
       )}
@@ -493,17 +493,17 @@ function StreakAlertPanel({
             <div
               key={a.agentId}
               className={`flex items-start gap-3 p-3.5 rounded-xl border transition-colors ${
-                isCritical ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"
+                isCritical ? "border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30" : "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30"
               }`}
             >
               <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${
-                isCritical ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
+                isCritical ? "bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400" : "bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400"
               }`}>
                 {a.name.slice(0, 2).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-slate-800 truncate">{a.name}</p>
-                <p className="text-[11px] text-slate-500 mt-0.5">
+                <p className="text-sm font-semibold text-slate-800 dark:text-zinc-200 truncate">{a.name}</p>
+                <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
                   {a.maxStreak}-day low streak · current rate {a.rate}% · {a.total} TX total
                 </p>
                 <div className="flex gap-1 mt-2 flex-wrap">
@@ -512,7 +512,7 @@ function StreakAlertPanel({
                       key={d.date}
                       title={`${fmtDate(d.date)}: ${d.rate !== null ? `${d.rate}%` : "no data"}`}
                       className={`w-3 h-3 rounded-sm transition-colors ${
-                        d.rate === null ? "bg-slate-200"
+                        d.rate === null ? "bg-slate-200 dark:bg-zinc-700"
                           : d.rate < rateThreshold ? "bg-red-400"
                           : "bg-green-400"
                       }`}
@@ -522,25 +522,25 @@ function StreakAlertPanel({
                 <div className="flex items-center gap-3 mt-1.5">
                   <div className="flex items-center gap-1">
                     <span className="w-2 h-2 rounded-sm bg-red-400 inline-block" />
-                    <span className="text-[10px] text-slate-400">Low</span>
+                    <span className="text-[10px] text-slate-400 dark:text-zinc-500">Low</span>
                   </div>
                   <div className="flex items-center gap-1">
                     <span className="w-2 h-2 rounded-sm bg-green-400 inline-block" />
-                    <span className="text-[10px] text-slate-400">OK</span>
+                    <span className="text-[10px] text-slate-400 dark:text-zinc-500">OK</span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-sm bg-slate-200 inline-block" />
-                    <span className="text-[10px] text-slate-400">No data</span>
+                    <span className="w-2 h-2 rounded-sm bg-slate-200 dark:bg-zinc-700 inline-block" />
+                    <span className="text-[10px] text-slate-400 dark:text-zinc-500">No data</span>
                   </div>
                 </div>
               </div>
               <div className="flex-shrink-0 text-right">
-                <p className={`text-2xl font-bold tabular-nums leading-none ${isCritical ? "text-red-500" : "text-amber-500"}`}>
+                <p className={`text-2xl font-bold tabular-nums leading-none ${isCritical ? "text-red-500 dark:text-red-400" : "text-amber-500 dark:text-amber-400"}`}>
                   {a.maxStreak}
                 </p>
-                <p className="text-[10px] text-slate-400 mt-0.5">days</p>
+                <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">days</p>
                 {isCritical && (
-                  <span className="inline-block mt-1.5 px-1.5 py-0.5 rounded bg-red-100 border border-red-200 text-red-600 text-[9px] font-bold">
+                  <span className="inline-block mt-1.5 px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-[9px] font-bold">
                     CRITICAL
                   </span>
                 )}
@@ -629,29 +629,29 @@ export default function KpiAnalyticsPage() {
   const streakAlerts = getStreakAlerts(agentStats, agentDailyRates, alertMinStreak, alertRateThreshold);
 
   return (
-    <div className="min-h-dvh bg-slate-50">
+    <div className="min-h-dvh bg-slate-50 dark:bg-zinc-950">
       <main className="max-w-6xl mx-auto px-6 py-8">
 
         {/* ── Header ── */}
         <div className="flex items-start justify-between mb-6">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-indigo-500 mb-1">KPI</p>
-            <h1 className="text-xl font-semibold text-slate-900 tracking-tight">Performance Analytics</h1>
-            <p className="text-slate-400 text-sm mt-0.5">{formattedFrom} — {formattedTo}</p>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-indigo-500 dark:text-indigo-400 mb-1">KPI</p>
+            <h1 className="text-xl font-semibold text-slate-900 dark:text-zinc-100 tracking-tight">Performance Analytics</h1>
+            <p className="text-slate-400 dark:text-zinc-500 text-sm mt-0.5">{formattedFrom} — {formattedTo}</p>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400">FROM</span>
+            <span className="text-xs text-slate-400 dark:text-zinc-500">FROM</span>
             <input type="date" value={from} onChange={e => setFrom(e.target.value)}
-              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition-all" />
-            <span className="text-xs text-slate-400">TO</span>
+              className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm text-slate-700 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all" />
+            <span className="text-xs text-slate-400 dark:text-zinc-500">TO</span>
             <input type="date" value={to} onChange={e => setTo(e.target.value)}
-              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition-all" />
+              className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm text-slate-700 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all" />
             <button onClick={() => { setFrom(today()); setTo(today()); }}
-              className="px-3 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-500 text-xs font-semibold hover:bg-indigo-100 transition-colors">
+              className="px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-500 dark:text-indigo-400 text-xs font-semibold hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors">
               Today
             </button>
 
-            <div className="h-6 w-px bg-slate-200 mx-1" />
+            <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700 mx-1" />
 
             <button
               onClick={handleExcelExport}
@@ -659,8 +659,8 @@ export default function KpiAnalyticsPage() {
               title={canExport ? "Export to Excel" : "No data to export"}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
                 canExport
-                  ? "bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-100"
-                  : "bg-slate-50 border-slate-200 text-slate-300 cursor-not-allowed"
+                  ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
+                  : "bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-300 dark:text-zinc-600 cursor-not-allowed"
               }`}
             >
               <FileSpreadsheet size={13} />
@@ -673,8 +673,8 @@ export default function KpiAnalyticsPage() {
               title={canExport ? "Export to PDF" : "No data to export"}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
                 canExport
-                  ? "bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100"
-                  : "bg-slate-50 border-slate-200 text-slate-300 cursor-not-allowed"
+                  ? "bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50"
+                  : "bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-300 dark:text-zinc-600 cursor-not-allowed"
               }`}
             >
               <FileText size={13} />
@@ -683,7 +683,7 @@ export default function KpiAnalyticsPage() {
           </div>
         </div>
 
-        {loading && <div className="text-center py-8 text-slate-400 text-sm">Loading analytics…</div>}
+        {loading && <div className="text-center py-8 text-slate-400 dark:text-zinc-500 text-sm">Loading analytics…</div>}
 
         {/* ── Streak Alert Panel ── */}
         {!loading && agentStats.length > 0 && (
@@ -696,21 +696,21 @@ export default function KpiAnalyticsPage() {
           />
         )}
 
-        {/* ── KPI Summary Cards ── */}
+               {/* ── KPI Summary Cards ── */}
         {summary && (
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-6">
             {[
-              { label: "Total TX",    value: summary.totalTx,              color: "text-slate-700",  sub: "transactions" },
-              { label: "Completion",  value: summary.done,                 color: "text-green-600",  sub: "finished"     },
-              { label: "Pending",     value: summary.pending,              color: "text-amber-500",  sub: "in queue"     },
-              { label: "Escalation",  value: summary.escalated,            color: "text-purple-500", sub: "flagged"      },
-              { label: "Avg TAT",     value: formatTat(summary.avgTat),    color: "text-indigo-500", sub: "per tx"       },
-              { label: "Rate",        value: `${summary.completionRate}%`, color: "text-green-600",  sub: "completion"   },
+              { label: "Total TX",    value: summary.totalTx,              color: "text-slate-700 dark:text-zinc-200",  sub: "transactions" },
+              { label: "Completion",  value: summary.done,                 color: "text-green-600 dark:text-green-400",  sub: "finished"     },
+              { label: "Pending",     value: summary.pending,              color: "text-amber-500 dark:text-amber-400",  sub: "in queue"     },
+              { label: "Escalation",  value: summary.escalated,            color: "text-purple-500 dark:text-purple-400", sub: "flagged"      },
+              { label: "Avg TAT",     value: formatTat(summary.avgTat),    color: "text-indigo-500 dark:text-indigo-400", sub: "per tx"       },
+              { label: "Rate",        value: `${summary.completionRate}%`, color: "text-green-600 dark:text-green-400",  sub: "completion"   },
             ].map(s => (
-              <div key={s.label} className="bg-white border border-slate-200 rounded-2xl px-4 py-4 text-center hover:border-slate-300 transition-colors">
+              <div key={s.label} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl px-4 py-4 text-center hover:border-slate-300 dark:hover:border-zinc-600 transition-colors">
                 <p className={`text-xl font-bold tabular-nums ${s.color}`}>{s.value}</p>
-                <p className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">{s.label}</p>
-                <p className="text-[10px] text-slate-300 mt-0.5">{s.sub}</p>
+                <p className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-wider mt-0.5">{s.label}</p>
+                <p className="text-[10px] text-slate-300 dark:text-zinc-600 mt-0.5">{s.sub}</p>
               </div>
             ))}
           </div>
@@ -720,53 +720,53 @@ export default function KpiAnalyticsPage() {
         {agentStats.length > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
             {topAgent && (
-              <div className="bg-white border border-amber-200 rounded-2xl p-4">
+              <div className="bg-white dark:bg-zinc-900 border border-amber-200 dark:border-amber-800 rounded-2xl p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center"><Award size={13} className="text-amber-500" /></div>
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-amber-500">Top Performer</span>
+                  <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/50 flex items-center justify-center"><Award size={13} className="text-amber-500 dark:text-amber-400" /></div>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-amber-500 dark:text-amber-400">Top Performer</span>
                 </div>
-                <p className="text-base font-bold text-slate-800 mb-1 truncate">{topAgent.name}</p>
-                <p className="text-2xl font-bold text-amber-500">{topAgent.rate}%</p>
-                <p className="text-[11px] text-slate-400 mt-0.5">completion rate · {topAgent.total} TX</p>
+                <p className="text-base font-bold text-slate-800 dark:text-zinc-200 mb-1 truncate">{topAgent.name}</p>
+                <p className="text-2xl font-bold text-amber-500 dark:text-amber-400">{topAgent.rate}%</p>
+                <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">completion rate · {topAgent.total} TX</p>
                 <div className="mt-3"><DonutRing pct={topAgent.rate} color="text-amber-400" size={40} /></div>
               </div>
             )}
             {lowAgent && (
-              <div className="bg-white border border-red-200 rounded-2xl p-4">
+              <div className="bg-white dark:bg-zinc-900 border border-red-200 dark:border-red-800 rounded-2xl p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <div className="w-7 h-7 rounded-lg bg-red-50 flex items-center justify-center"><TrendingDown size={13} className="text-red-500" /></div>
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-red-500">Needs Attention</span>
+                  <div className="w-7 h-7 rounded-lg bg-red-50 dark:bg-red-950/50 flex items-center justify-center"><TrendingDown size={13} className="text-red-500 dark:text-red-400" /></div>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400">Needs Attention</span>
                 </div>
-                <p className="text-base font-bold text-slate-800 mb-1 truncate">{lowAgent.name}</p>
-                <p className="text-2xl font-bold text-red-500">{lowAgent.rate}%</p>
-                <p className="text-[11px] text-slate-400 mt-0.5">completion rate · {lowAgent.total} TX</p>
+                <p className="text-base font-bold text-slate-800 dark:text-zinc-200 mb-1 truncate">{lowAgent.name}</p>
+                <p className="text-2xl font-bold text-red-500 dark:text-red-400">{lowAgent.rate}%</p>
+                <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">completion rate · {lowAgent.total} TX</p>
                 <div className="mt-3"><DonutRing pct={lowAgent.rate} color="text-red-400" size={40} /></div>
               </div>
             )}
             {mostActive && (
-              <div className="bg-white border border-indigo-200 rounded-2xl p-4">
+              <div className="bg-white dark:bg-zinc-900 border border-indigo-200 dark:border-indigo-800 rounded-2xl p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center"><Zap size={13} className="text-indigo-500" /></div>
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-500">Most Active</span>
+                  <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 flex items-center justify-center"><Zap size={13} className="text-indigo-500 dark:text-indigo-400" /></div>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 dark:text-indigo-400">Most Active</span>
                 </div>
-                <p className="text-base font-bold text-slate-800 mb-1 truncate">{mostActive.name}</p>
-                <p className="text-2xl font-bold text-indigo-500">{mostActive.total}</p>
-                <p className="text-[11px] text-slate-400 mt-0.5">transactions handled</p>
+                <p className="text-base font-bold text-slate-800 dark:text-zinc-200 mb-1 truncate">{mostActive.name}</p>
+                <p className="text-2xl font-bold text-indigo-500 dark:text-indigo-400">{mostActive.total}</p>
+                <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">transactions handled</p>
                 <div className="mt-3"><MiniBar value={mostActive.total} max={maxAgent} color="bg-indigo-500" /></div>
               </div>
             )}
             {fastestAgent && (
-              <div className="bg-white border border-green-200 rounded-2xl p-4">
+              <div className="bg-white dark:bg-zinc-900 border border-green-200 dark:border-green-800 rounded-2xl p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <div className="w-7 h-7 rounded-lg bg-green-50 flex items-center justify-center"><Target size={13} className="text-green-600" /></div>
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-green-600">Fastest TAT</span>
+                  <div className="w-7 h-7 rounded-lg bg-green-50 dark:bg-green-950/50 flex items-center justify-center"><Target size={13} className="text-green-600 dark:text-green-400" /></div>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-green-600 dark:text-green-400">Fastest TAT</span>
                 </div>
-                <p className="text-base font-bold text-slate-800 mb-1 truncate">{fastestAgent.name}</p>
-                <p className="text-xl font-bold text-green-600 font-mono">{formatTat(fastestAgent.avgTat)}</p>
-                <p className="text-[11px] text-slate-400 mt-0.5">avg turnaround time</p>
+                <p className="text-base font-bold text-slate-800 dark:text-zinc-200 mb-1 truncate">{fastestAgent.name}</p>
+                <p className="text-xl font-bold text-green-600 dark:text-green-400 font-mono">{formatTat(fastestAgent.avgTat)}</p>
+                <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">avg turnaround time</p>
                 <div className="mt-3 flex items-center gap-1.5">
-                  <Clock size={11} className="text-slate-300" />
-                  <span className="text-[11px] text-slate-400">{fastestAgent.total} transactions</span>
+                  <Clock size={11} className="text-slate-300 dark:text-zinc-600" />
+                  <span className="text-[11px] text-slate-400 dark:text-zinc-500">{fastestAgent.total} transactions</span>
                 </div>
               </div>
             )}
@@ -774,7 +774,7 @@ export default function KpiAnalyticsPage() {
         )}
 
         {/* ── Tabs ── */}
-        <div className="flex items-center gap-1 mb-5 bg-white border border-slate-200 rounded-xl p-1 w-fit">
+        <div className="flex items-center gap-1 mb-5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-1 w-fit">
           {([
             { key: "overview", label: "Overview",    icon: Activity  },
             { key: "agents",   label: "Agents",      icon: Users     },
@@ -784,7 +784,7 @@ export default function KpiAnalyticsPage() {
             return (
               <button key={t.key} onClick={() => setTab(t.key)}
                 className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
-                  tab === t.key ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700"
+                  tab === t.key ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"
                 }`}>
                 <Icon size={12} />{t.label}
               </button>
@@ -795,16 +795,16 @@ export default function KpiAnalyticsPage() {
         {/* ── Overview Tab ── */}
         {tab === "overview" && (
           <div className="space-y-4">
-            <div className="bg-white border border-slate-200 rounded-2xl p-5">
+            <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-5">
               <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-2">
-                  <TrendingUp size={14} className="text-indigo-500" />
-                  <h2 className="text-sm font-semibold text-slate-800">Daily Transaction Volume</h2>
+                  <TrendingUp size={14} className="text-indigo-500 dark:text-indigo-400" />
+                  <h2 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">Daily Transaction Volume</h2>
                 </div>
-                <span className="text-[11px] text-slate-400">{dailyTrend.length} days</span>
+                <span className="text-[11px] text-slate-400 dark:text-zinc-500">{dailyTrend.length} days</span>
               </div>
               {dailyTrend.length === 0 ? (
-                <p className="text-xs text-slate-400 py-8 text-center">No data in range</p>
+                <p className="text-xs text-slate-400 dark:text-zinc-500 py-8 text-center">No data in range</p>
               ) : (
                 <>
                   <div className="flex items-end gap-1.5 h-40 mb-2">
@@ -813,8 +813,8 @@ export default function KpiAnalyticsPage() {
                       const isMax = d.count === maxDaily;
                       return (
                         <div key={d.date} className="flex-1 flex flex-col items-center gap-1 group">
-                          <span className={`text-[10px] font-semibold tabular-nums transition-all ${isMax ? "text-indigo-500" : "text-slate-300 opacity-0 group-hover:opacity-100"}`}>{d.count}</span>
-                          <div className={`w-full rounded-t-md transition-all duration-500 ${isMax ? "bg-indigo-500" : "bg-indigo-200 group-hover:bg-indigo-400"}`}
+                          <span className={`text-[10px] font-semibold tabular-nums transition-all ${isMax ? "text-indigo-500 dark:text-indigo-400" : "text-slate-300 dark:text-zinc-600 opacity-0 group-hover:opacity-100"}`}>{d.count}</span>
+                          <div className={`w-full rounded-t-md transition-all duration-500 ${isMax ? "bg-indigo-500" : "bg-indigo-200 dark:bg-indigo-900 group-hover:bg-indigo-400 dark:group-hover:bg-indigo-600"}`}
                             style={{ height: `${pct}%`, transitionDelay: `${i * 30}ms` }} />
                         </div>
                       );
@@ -823,17 +823,17 @@ export default function KpiAnalyticsPage() {
                   <div className="flex justify-between">
                     {dailyTrend.map(d => (
                       <div key={d.date} className="flex-1 text-center">
-                        <span className="text-[9px] text-slate-400">{fmtDate(d.date).split(" ")[1]}</span>
+                        <span className="text-[9px] text-slate-400 dark:text-zinc-500">{fmtDate(d.date).split(" ")[1]}</span>
                       </div>
                     ))}
                   </div>
-                  <div className="flex items-center gap-3 mt-3 pt-3 border-t border-slate-100">
+                  <div className="flex items-center gap-3 mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800">
                     <div className="flex items-center gap-1.5">
                       <span className="w-2.5 h-2.5 rounded-sm bg-indigo-500" />
-                      <span className="text-[11px] text-slate-400">Transactions</span>
+                      <span className="text-[11px] text-slate-400 dark:text-zinc-500">Transactions</span>
                     </div>
-                    <span className="text-[11px] text-slate-400 ml-auto">
-                      Peak: <span className="text-indigo-500 font-semibold">{maxDaily}</span> on {fmtDate(dailyTrend.find(d => d.count === maxDaily)?.date ?? "")}
+                    <span className="text-[11px] text-slate-400 dark:text-zinc-500 ml-auto">
+                      Peak: <span className="text-indigo-500 dark:text-indigo-400 font-semibold">{maxDaily}</span> on {fmtDate(dailyTrend.find(d => d.count === maxDaily)?.date ?? "")}
                     </span>
                   </div>
                 </>
@@ -841,29 +841,29 @@ export default function KpiAnalyticsPage() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-white border border-slate-200 rounded-2xl p-5">
+              <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-5">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <Users size={14} className="text-indigo-500" />
-                    <h2 className="text-sm font-semibold text-slate-800">Agent Volume</h2>
+                    <Users size={14} className="text-indigo-500 dark:text-indigo-400" />
+                    <h2 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">Agent Volume</h2>
                   </div>
                 </div>
                 <div className="space-y-3.5">
-                  {agentStats.length === 0 && <p className="text-xs text-slate-400">No data</p>}
+                  {agentStats.length === 0 && <p className="text-xs text-slate-400 dark:text-zinc-500">No data</p>}
                   {[...agentStats].sort((a, b) => b.total - a.total).map((a) => (
                     <div key={a.agentId}>
                       <div className="flex items-center justify-between mb-1.5">
                         <div className="flex items-center gap-2">
                           <RankBadge rank={getRateRank(a.agentId)} total={agentStats.length} />
-                          <span className="text-xs text-slate-700 font-medium">{a.name}</span>
+                          <span className="text-xs text-slate-700 dark:text-zinc-300 font-medium">{a.name}</span>
                         </div>
                         <div className="flex items-center gap-3 text-xs tabular-nums">
-                          <span className="text-green-600">{a.done}</span>
-                          <span className="text-amber-500">{a.pending}</span>
-                          <span className="text-slate-500">{a.total}</span>
+                          <span className="text-green-600 dark:text-green-400">{a.done}</span>
+                          <span className="text-amber-500 dark:text-amber-400">{a.pending}</span>
+                          <span className="text-slate-500 dark:text-zinc-400">{a.total}</span>
                         </div>
                       </div>
-                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-2 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                         <div className="h-full flex">
                           <div className="bg-green-400 rounded-l-full transition-all duration-700" style={{ width: `${(a.done / Math.max(a.total,1)) * (a.total/maxAgent) * 100}%` }} />
                           <div className="bg-amber-400 transition-all duration-700" style={{ width: `${(a.pending / Math.max(a.total,1)) * (a.total/maxAgent) * 100}%` }} />
@@ -876,33 +876,33 @@ export default function KpiAnalyticsPage() {
                     {[["bg-green-400","Completion"],["bg-amber-400","Pending"],["bg-purple-400","Escalation"]].map(([c,l]) => (
                       <div key={l} className="flex items-center gap-1.5">
                         <span className={`w-2 h-2 rounded-sm ${c}`} />
-                        <span className="text-[10px] text-slate-400">{l}</span>
+                        <span className="text-[10px] text-slate-400 dark:text-zinc-500">{l}</span>
                       </div>
                     ))}
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white border border-slate-200 rounded-2xl p-5">
+              <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-5">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <BarChart2 size={14} className="text-indigo-500" />
-                    <h2 className="text-sm font-semibold text-slate-800">Tasks Type Volume</h2>
+                    <BarChart2 size={14} className="text-indigo-500 dark:text-indigo-400" />
+                    <h2 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">Tasks Type Volume</h2>
                   </div>
                 </div>
                 <div className="space-y-3.5">
-                  {docTypeStats.length === 0 && <p className="text-xs text-slate-400">No data</p>}
+                  {docTypeStats.length === 0 && <p className="text-xs text-slate-400 dark:text-zinc-500">No data</p>}
                   {[...docTypeStats].sort((a, b) => b.count - a.count).map((d, i) => (
                     <div key={d.type}>
                       <div className="flex items-center justify-between mb-1.5">
                         <div className="flex items-center gap-2">
-                          <span className="text-slate-300 text-xs font-mono">#{i+1}</span>
-                          <span className="text-xs text-slate-700 font-medium">{d.type}</span>
-                          {i === 0 && topDoc && <span className="px-1.5 py-0.5 rounded bg-green-50 border border-green-200 text-green-600 text-[9px] font-bold">MOST</span>}
+                          <span className="text-slate-300 dark:text-zinc-600 text-xs font-mono">#{i+1}</span>
+                          <span className="text-xs text-slate-700 dark:text-zinc-300 font-medium">{d.type}</span>
+                          {i === 0 && topDoc && <span className="px-1.5 py-0.5 rounded bg-green-50 dark:bg-green-950/50 border border-green-200 dark:border-green-800 text-green-600 dark:text-green-400 text-[9px] font-bold">MOST</span>}
                         </div>
                         <div className="flex items-center gap-2 text-xs">
-                          <span className="text-slate-400 font-mono">{formatTat(d.avgTat)}</span>
-                          <span className="text-slate-600">{d.count}</span>
+                          <span className="text-slate-400 dark:text-zinc-500 font-mono">{formatTat(d.avgTat)}</span>
+                          <span className="text-slate-600 dark:text-zinc-300">{d.count}</span>
                         </div>
                       </div>
                       <MiniBar value={d.count} max={maxDoc} color="bg-green-400" />
@@ -913,10 +913,10 @@ export default function KpiAnalyticsPage() {
             </div>
 
             {agentStats.length > 0 && (
-              <div className="bg-white border border-slate-200 rounded-2xl p-5">
+              <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-5">
                 <div className="flex items-center gap-2 mb-5">
-                  <CheckCircle2 size={14} className="text-indigo-500" />
-                  <h2 className="text-sm font-semibold text-slate-800">Completion Rate Comparison</h2>
+                  <CheckCircle2 size={14} className="text-indigo-500 dark:text-indigo-400" />
+                  <h2 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">Completion Rate Comparison</h2>
                 </div>
                 <div className="flex items-end gap-3">
                   {[...agentStats].sort((a, b) => b.rate - a.rate).map((a, i) => {
@@ -927,9 +927,9 @@ export default function KpiAnalyticsPage() {
                         <span className="text-xs font-bold tabular-nums" style={{ color: isTop ? "#d97706" : isLow ? "#ef4444" : "#6366f1" }}>{a.rate}%</span>
                         <div className="w-full rounded-t-md transition-all duration-700 min-h-[4px]"
                           style={{ height: `${Math.max(4, a.rate)}px`, maxHeight: "120px", background: isTop ? "#f59e0b" : isLow ? "#fca5a5" : "#a5b4fc" }} />
-                        <span className="text-[10px] text-slate-500 text-center truncate w-full">{a.name.split(" ")[0]}</span>
-                        {isTop && <span className="text-[9px] text-amber-500 font-bold">TOP</span>}
-                        {isLow && <span className="text-[9px] text-red-500 font-bold">LOW</span>}
+                        <span className="text-[10px] text-slate-500 dark:text-zinc-400 text-center truncate w-full">{a.name.split(" ")[0]}</span>
+                        {isTop && <span className="text-[9px] text-amber-500 dark:text-amber-400 font-bold">TOP</span>}
+                        {isLow && <span className="text-[9px] text-red-500 dark:text-red-400 font-bold">LOW</span>}
                       </div>
                     );
                   })}
@@ -941,56 +941,56 @@ export default function KpiAnalyticsPage() {
 
         {/* ── Agents Tab ── */}
         {tab === "agents" && (
-          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+          <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 dark:border-zinc-700 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Users size={14} className="text-indigo-500" />
-                <h2 className="text-sm font-semibold text-slate-800">Agent Statistics</h2>
+                <Users size={14} className="text-indigo-500 dark:text-indigo-400" />
+                <h2 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">Agent Statistics</h2>
               </div>
-              <span className="text-[11px] text-slate-400">{agentStats.length} agents · click headers to sort</span>
+              <span className="text-[11px] text-slate-400 dark:text-zinc-500">{agentStats.length} agents · click headers to sort</span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200">
-                    <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Rank</th>
-                    <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Agent</th>
+                  <tr className="border-b border-slate-200 dark:border-zinc-700">
+                    <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Rank</th>
+                    <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Agent</th>
                     <SortTh label="Total"      col="total"     sort={sort} onSort={handleSort} />
                     <SortTh label="Completion" col="done"      sort={sort} onSort={handleSort} />
                     <SortTh label="Pending"    col="pending"   sort={sort} onSort={handleSort} />
                     <SortTh label="Escalation" col="escalated" sort={sort} onSort={handleSort} />
                     <SortTh label="Avg TAT"    col="avgTat"    sort={sort} onSort={handleSort} />
                     <SortTh label="Rate"       col="rate"      sort={sort} onSort={handleSort} />
-                    <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Progress</th>
+                    <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Progress</th>
                   </tr>
                 </thead>
                 <tbody>
                   {sortedAgents.length === 0 && (
-                    <tr><td colSpan={9} className="px-5 py-10 text-center text-slate-400 text-sm">No data</td></tr>
+                    <tr><td colSpan={9} className="px-5 py-10 text-center text-slate-400 dark:text-zinc-500 text-sm">No data</td></tr>
                   )}
                   {sortedAgents.map((a) => (
-                    <tr key={a.agentId} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                    <tr key={a.agentId} className="border-b border-slate-100 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors">
                       <td className="px-4 py-3.5"><RankBadge rank={getRateRank(a.agentId)} total={agentStats.length} /></td>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-2">
                           <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
                             {a.name.slice(0, 2).toUpperCase()}
                           </div>
-                          <span className="font-medium text-slate-700">{a.name}</span>
+                          <span className="font-medium text-slate-700 dark:text-zinc-200">{a.name}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3.5 text-slate-700 font-semibold tabular-nums">{a.total}</td>
-                      <td className="px-4 py-3.5 text-green-600 font-semibold tabular-nums">{a.done}</td>
-                      <td className="px-4 py-3.5 text-amber-500 tabular-nums">{a.pending}</td>
-                      <td className="px-4 py-3.5 text-purple-500 tabular-nums">{a.escalated}</td>
-                      <td className="px-4 py-3.5 font-mono text-indigo-500 text-xs tabular-nums">{formatTat(a.avgTat)}</td>
+                      <td className="px-4 py-3.5 text-slate-700 dark:text-zinc-300 font-semibold tabular-nums">{a.total}</td>
+                      <td className="px-4 py-3.5 text-green-600 dark:text-green-400 font-semibold tabular-nums">{a.done}</td>
+                      <td className="px-4 py-3.5 text-amber-500 dark:text-amber-400 tabular-nums">{a.pending}</td>
+                      <td className="px-4 py-3.5 text-purple-500 dark:text-purple-400 tabular-nums">{a.escalated}</td>
+                      <td className="px-4 py-3.5 font-mono text-indigo-500 dark:text-indigo-400 text-xs tabular-nums">{formatTat(a.avgTat)}</td>
                       <td className="px-4 py-3.5">
-                        <span className={`font-bold tabular-nums text-sm ${a.rate >= 80 ? "text-green-600" : a.rate >= 50 ? "text-amber-500" : "text-red-500"}`}>
+                        <span className={`font-bold tabular-nums text-sm ${a.rate >= 80 ? "text-green-600 dark:text-green-400" : a.rate >= 50 ? "text-amber-500 dark:text-amber-400" : "text-red-500 dark:text-red-400"}`}>
                           {a.rate}%
                         </span>
                       </td>
                       <td className="px-4 py-3.5 min-w-[120px]">
-                        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                           <div className={`h-full rounded-full transition-all duration-700 ${a.rate >= 80 ? "bg-green-500" : a.rate >= 50 ? "bg-amber-400" : "bg-red-400"}`}
                             style={{ width: `${a.rate}%` }} />
                         </div>
@@ -1006,43 +1006,43 @@ export default function KpiAnalyticsPage() {
         {/* ── Task Types Tab ── */}
         {tab === "docs" && (
           <div className="space-y-4">
-            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-              <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-2">
-                <BarChart2 size={14} className="text-indigo-500" />
-                <h2 className="text-sm font-semibold text-slate-800">Task Type Performance</h2>
+            <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl overflow-hidden">
+              <div className="px-5 py-4 border-b border-slate-200 dark:border-zinc-700 flex items-center gap-2">
+                <BarChart2 size={14} className="text-indigo-500 dark:text-indigo-400" />
+                <h2 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">Task Type Performance</h2>
               </div>
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200">
+                  <tr className="border-b border-slate-200 dark:border-zinc-700">
                     {["#", "Type", "Count", "Avg TAT", "Share"].map(h => (
-                      <th key={h} className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">{h}</th>
+                      <th key={h} className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400 dark:text-zinc-500">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {docTypeStats.length === 0 && (
-                    <tr><td colSpan={5} className="px-5 py-10 text-center text-slate-400 text-sm">No data</td></tr>
+                    <tr><td colSpan={5} className="px-5 py-10 text-center text-slate-400 dark:text-zinc-500 text-sm">No data</td></tr>
                   )}
                   {[...docTypeStats].sort((a, b) => b.count - a.count).map((d, i) => {
                     const total = docTypeStats.reduce((s, x) => s + x.count, 0);
                     const share = total ? Math.round((d.count / total) * 100) : 0;
                     return (
-                      <tr key={d.type} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                        <td className="px-5 py-3.5 text-slate-300 text-xs font-mono">#{i+1}</td>
+                      <tr key={d.type} className="border-b border-slate-100 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors">
+                        <td className="px-5 py-3.5 text-slate-300 dark:text-zinc-600 text-xs font-mono">#{i+1}</td>
                         <td className="px-5 py-3.5">
                           <div className="flex items-center gap-2">
-                            <span className="text-slate-700 font-medium">{d.type}</span>
-                            {i === 0 && <span className="px-1.5 py-0.5 rounded bg-green-50 border border-green-200 text-green-600 text-[9px] font-bold">MOST USED</span>}
+                            <span className="text-slate-700 dark:text-zinc-300 font-medium">{d.type}</span>
+                            {i === 0 && <span className="px-1.5 py-0.5 rounded bg-green-50 dark:bg-green-950/50 border border-green-200 dark:border-green-800 text-green-600 dark:text-green-400 text-[9px] font-bold">MOST USED</span>}
                           </div>
                         </td>
-                        <td className="px-5 py-3.5 text-slate-700 font-semibold tabular-nums">{d.count}</td>
-                        <td className="px-5 py-3.5 font-mono text-indigo-500 text-xs tabular-nums">{formatTat(d.avgTat)}</td>
+                        <td className="px-5 py-3.5 text-slate-700 dark:text-zinc-300 font-semibold tabular-nums">{d.count}</td>
+                        <td className="px-5 py-3.5 font-mono text-indigo-500 dark:text-indigo-400 text-xs tabular-nums">{formatTat(d.avgTat)}</td>
                         <td className="px-5 py-3.5 min-w-[140px]">
                           <div className="flex items-center gap-2">
-                            <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div className="flex-1 h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                               <div className="h-full bg-green-400 rounded-full transition-all duration-700" style={{ width: `${share}%` }} />
                             </div>
-                            <span className="text-xs text-slate-500 tabular-nums w-8 text-right">{share}%</span>
+                            <span className="text-xs text-slate-500 dark:text-zinc-400 tabular-nums w-8 text-right">{share}%</span>
                           </div>
                         </td>
                       </tr>

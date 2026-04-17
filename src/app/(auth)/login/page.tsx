@@ -188,14 +188,14 @@ export default function LoginPage() {
       setServerError("Invalid email or password. Please try again.");
       return;
     }
-
-    router.push("/dashboard");
+                      
+    router.push("/dashboard/homedashboard");
     router.refresh();
   };
 
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
-    await signIn("google", { callbackUrl: "/dashboard" });
+    await signIn("google", { callbackUrl: "/dashboard/homedashboard" });
   };
 
   return (
