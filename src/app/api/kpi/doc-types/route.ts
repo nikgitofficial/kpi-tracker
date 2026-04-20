@@ -31,6 +31,29 @@ export async function POST(req: NextRequest) {
   });
   return NextResponse.json({ docType }, { status: 201 });
 }
+export async function PATCH(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id, name, taskCategory, countType } = await req.json();
+  if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
+
+  await connectDB();
+
+  const updateData: Record<string, unknown> = {};
+  if (name?.trim()) updateData.name = name.trim();
+  if (taskCategory)  updateData.taskCategory = taskCategory;
+  if (countType)     updateData.countType = countType;
+
+  const docType = await DocType.findOneAndUpdate(
+    { _id: id, email: session.user.email },
+    { $set: updateData },
+    { new: true }
+  );
+  if (!docType) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  return NextResponse.json({ docType });
+}
+
 
 export async function DELETE(req: NextRequest) {
   const session = await auth();

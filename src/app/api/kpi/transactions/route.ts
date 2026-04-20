@@ -188,23 +188,27 @@ export async function PATCH(req: NextRequest) {
       });
       const countType = docTypeRecord?.countType ?? "transaction";
       
-      const tx = await Transaction.findOneAndUpdate(
-        { _id: id, ownerEmail: session.user.email },
-        {
-          $push: {
-            subtasks: {
-              docType:      subtask.docType,
-              number:       subtask.number ?? undefined,
-              notes:        subtask.notes || undefined,
-              status:       VALID_STATUSES.includes(subtask.status) ? subtask.status : "PENDING",
-              taskCategory: subtask.taskCategory ?? "Production",
-              countType:    countType,
-              createdAt:    Date.now(),
-            },
+      // Fetch parent transaction to inherit its taskCategory
+    const parentTx = await Transaction.findOne({ _id: id, ownerEmail: session.user.email });
+    const inheritedCategory = subtask.taskCategory ?? parentTx?.taskCategory ?? "Production";
+
+    const tx = await Transaction.findOneAndUpdate(
+      { _id: id, ownerEmail: session.user.email },
+      {
+        $push: {
+          subtasks: {
+            docType:      subtask.docType,
+            number:       subtask.number ?? undefined,
+            notes:        subtask.notes || undefined,
+            status:       VALID_STATUSES.includes(subtask.status) ? subtask.status : "PENDING",
+            taskCategory: inheritedCategory,
+            countType:    countType,
+            createdAt:    Date.now(),
           },
         },
-        { new: true }
-      );
+      },
+      { new: true }
+    );
       if (!tx) return NextResponse.json({ error: "Not found" }, { status: 404 });
       return NextResponse.json({ transaction: tx });
     }

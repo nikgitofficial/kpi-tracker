@@ -73,6 +73,12 @@ interface StandaloneTimer {
   accSeconds: number;
 }
 
+interface EndTimerConfirmation {
+  productiveSeconds: number;
+  bioBreakSeconds: number;
+  netSeconds: number;
+}
+
 /* ─── Helpers ─── */
 function formatTat(sec?: number) {
   if (sec == null || sec < 0) return "—";
@@ -310,10 +316,12 @@ interface ProductivityTimerProps {
   agentId: string;
   date: string;
   onProductivityChange: (seconds: number) => void;
+  bioBreakSeconds: number; 
 }
 
-function ProductivityTimer({ agentId, date, onProductivityChange }: ProductivityTimerProps) {
+function ProductivityTimer({ agentId, date, onProductivityChange,bioBreakSeconds }: ProductivityTimerProps) {
   const [timer, setTimer] = useState<StandaloneTimer>({ running: false, paused: false, startEpoch: null, accSeconds: 0 });
+  const [pendingEnd, setPendingEnd] = useState<EndTimerConfirmation | null>(null);
   const [display, setDisplay] = useState("00:00:00");
   const [timerTxId, setTimerTxId] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -476,14 +484,28 @@ function ProductivityTimer({ agentId, date, onProductivityChange }: Productivity
     setTimer(prev => ({ ...prev, paused: false, startEpoch: Date.now() }));
   };
 
-  const handleEnd = () => {
-    const total = getTotalSeconds(timer);
-    onProductivityChange(total);
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    setTimer({ running: false, paused: false, startEpoch: null, accSeconds: total });
-    setDisplay(formatTat(total));
-    persistToDB(total, timerTxId, null, false);
-  };
+const handleEnd = () => {
+  const total = getTotalSeconds(timer);
+  const net = Math.max(0, total - bioBreakSeconds);
+  // Show confirmation modal instead of ending immediately
+  setPendingEnd({
+    productiveSeconds: total,
+    bioBreakSeconds,
+    netSeconds: net,
+  });
+};
+
+const confirmEnd = () => {
+  if (!pendingEnd) return;
+  onProductivityChange(pendingEnd.netSeconds);
+  if (intervalRef.current) clearInterval(intervalRef.current);
+  setTimer({ running: false, paused: false, startEpoch: null, accSeconds: pendingEnd.netSeconds });
+  setDisplay(formatTat(pendingEnd.netSeconds));
+  persistToDB(pendingEnd.netSeconds, timerTxId, null, false);
+  setPendingEnd(null);
+};
+
+const cancelEnd = () => setPendingEnd(null);
 
   const handleReset = () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
@@ -559,10 +581,64 @@ function ProductivityTimer({ agentId, date, onProductivityChange }: Productivity
             </button>
           )}
         </div>
-      </div>
+    </div>
+
+      {/* ── End Timer Confirmation Modal ── */}
+      {pendingEnd && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 w-[360px] shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center flex-shrink-0">
+                <Timer size={15} className="text-indigo-500" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900 dark:text-zinc-100">End Productivity Timer?</h2>
+                <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">Bio break time will be deducted</p>
+              </div>
+            </div>
+            {/* Breakdown */}
+            <div className="space-y-2 mb-5">
+              <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200">
+                <span className="text-xs text-emerald-700 font-medium">Total Timer</span>
+                <span className="text-xs font-mono font-bold text-emerald-600">{formatTat(pendingEnd.productiveSeconds)}</span>
+              </div>
+              <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-amber-50 border border-amber-200">
+                <span className="text-xs text-amber-700 font-medium flex items-center gap-1">
+                  <span>🚻</span> Bio Break Time
+                </span>
+                <span className="text-xs font-mono font-bold text-amber-600">− {formatTat(pendingEnd.bioBreakSeconds)}</span>
+              </div>
+              <div className="h-px bg-slate-200 dark:bg-zinc-700 mx-1" />
+              <div className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-indigo-50 border border-indigo-200">
+                <span className="text-xs text-indigo-700 font-semibold">Net Productive Time</span>
+                <span className="text-sm font-mono font-bold text-indigo-600">{formatTat(pendingEnd.netSeconds)}</span>
+              </div>
+            </div>
+            {/* Buttons */}
+            <div className="flex gap-2">
+              <button
+                onClick={cancelEnd}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 text-sm font-medium hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmEnd}
+                className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+/* ═══════════════════════════════════════════════════════
+   ─── Subtask Row (table inline edit)
 
 /* ═══════════════════════════════════════════════════════
    ─── Subtask Row (table inline edit)
@@ -572,11 +648,12 @@ interface SubtaskRowProps {
   index: number;
   txId: string;
   docTypes: DocType[];
+  parentCategory: TaskCategory;
   onUpdated: (updated: Transaction) => void;
   onDeleted: (updated: Transaction) => void;
 }
 
-function SubtaskRow({ subtask, index, txId, docTypes, onUpdated, onDeleted }: SubtaskRowProps) {
+function SubtaskRow({ subtask, index, txId, docTypes, parentCategory, onUpdated, onDeleted }: SubtaskRowProps) {
   const [editing,   setEditing]   = useState(false);
   const [stDocType, setStDocType] = useState(subtask.docType);
   const [stNumber,  setStNumber]  = useState(String(subtask.number ?? ""));
@@ -593,13 +670,13 @@ function SubtaskRow({ subtask, index, txId, docTypes, onUpdated, onDeleted }: Su
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id: txId,
-        subtaskAction: "UPDATE",
-        subtaskId: subtask._id,
+        subtaskAction: "ADD",
         subtask: {
-          docType: stDocType,
-          number:  stNumber ? Number(stNumber) : undefined,
-          status:  stStatus,
-          notes:   stNotes || undefined,
+          docType:      stDocType,
+          number:       stNumber ? Number(stNumber) : undefined,
+          notes:        stNotes.trim() || undefined,
+          status:       stStatus,
+          taskCategory: parentCategory,  // ADD THIS
         },
       }),
     });
@@ -682,11 +759,11 @@ function SubtaskRow({ subtask, index, txId, docTypes, onUpdated, onDeleted }: Su
 interface AddSubtaskInlineRowProps {
   docTypes: DocType[];
   txId: string;
+  parentCategory: TaskCategory;  // ADD THIS
   onAdded: (updated: Transaction) => void;
   onCancel: () => void;
 }
-
-function AddSubtaskInlineRow({ docTypes, txId, onAdded, onCancel }: AddSubtaskInlineRowProps) {
+function AddSubtaskInlineRow({ docTypes, txId, parentCategory, onAdded, onCancel }: AddSubtaskInlineRowProps) {
   const [stDocType, setStDocType] = useState(docTypes[0]?.name ?? "");
   const [stNumber,  setStNumber]  = useState("");
   const [stStatus,  setStStatus]  = useState<Subtask["status"]>("COMPLETION");
@@ -848,6 +925,7 @@ function TxTableRow({ tx, index, docTypeCount, subtaskDocTypeTotals, docTypes, o
               index={si}
               txId={tx._id}
               docTypes={docTypes}
+              parentCategory={tx.taskCategory ?? "Production"}
               onUpdated={onTxUpdated}
               onDeleted={onTxUpdated}
             />
@@ -859,6 +937,7 @@ function TxTableRow({ tx, index, docTypeCount, subtaskDocTypeTotals, docTypes, o
                   <AddSubtaskInlineRow
                     docTypes={docTypes}
                     txId={tx._id}
+                    parentCategory={tx.taskCategory ?? "Production"} 
                     onAdded={(updated) => { onTxUpdated(updated); setShowSubtaskForm(false); }}
                     onCancel={() => setShowSubtaskForm(false)}
                   />
@@ -886,7 +965,7 @@ function TxTableRow({ tx, index, docTypeCount, subtaskDocTypeTotals, docTypes, o
 /* ═══════════════════════════════════════════════════════
    ─── Bio Break Panel
    ═══════════════════════════════════════════════════════ */
-function BioBreakPanel({ selectedAgent, date }: { selectedAgent: Agent; date: string }) {
+function BioBreakPanel({ selectedAgent, date, onBioBreakChange }: { selectedAgent: Agent; date: string; onBioBreakChange: (seconds: number) => void }) {
   useTick(1000);
 
   const [agentSession, setAgentSession]       = useState<AgentSessionData | null>(null);
@@ -956,6 +1035,7 @@ function BioBreakPanel({ selectedAgent, date }: { selectedAgent: Agent; date: st
   const liveBreakSeconds     = activeBreak ? Math.floor((Date.now() - activeBreak.startEpoch) / 1000) : 0;
   const totalBioBreakSeconds = (agentSession?.totalBreakSeconds ?? 0) + liveBreakSeconds;
   const bioBreaks            = agentSession?.breaks ?? [];
+  useEffect(() => { onBioBreakChange(totalBioBreakSeconds); }, [totalBioBreakSeconds]);
   const completedBios        = bioBreaks.filter(b => b.endEpoch);
 
   return (
@@ -1335,6 +1415,7 @@ export default function TxLogPage() {
   const [date, setDate]                   = useState(today());
 
   const [timerProductiveSeconds, setTimerProductiveSeconds] = useState(0);
+  const [totalBioBreakSeconds, setTotalBioBreakSeconds]     = useState(0);
 
   /* ── Log-form state ── */
   const [showLogModal, setShowLogModal]   = useState(false);
@@ -1370,6 +1451,11 @@ export default function TxLogPage() {
   const [exporting, setExporting]                   = useState<"pdf" | "excel" | null>(null);
 
   const [resumingTxId, setResumingTxId] = useState<string | null>(null);
+
+  const [editingDocTypeId, setEditingDocTypeId]         = useState<string | null>(null);
+  const [editDocTypeName, setEditDocTypeName]           = useState("");
+  const [editDocTypeCategory, setEditDocTypeCategory]   = useState<TaskCategory>("Production");
+  const [editDocTypeCountType, setEditDocTypeCountType] = useState<CountType>("transaction");
 
   /* ── Bootstrap ── */
   useEffect(() => {
@@ -1665,6 +1751,25 @@ const res = await fetch("/api/kpi/transactions", {
     setDocTypes(prev => prev.filter(d => d._id !== id));
   };
 
+  const updateDocType = async (id: string) => {
+  if (!editDocTypeName.trim()) return;
+  const res = await fetch("/api/kpi/doc-types", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      id,
+      name: editDocTypeName.trim(),
+      taskCategory: editDocTypeCategory,
+      countType: editDocTypeCountType,
+    }),
+  });
+  if (res.ok) {
+    const d = await res.json();
+    setDocTypes(prev => prev.map(dt => dt._id === id ? d.docType : dt));
+    setEditingDocTypeId(null);
+  }
+};
+
   const canExport = !!selectedAgent && transactions.length > 0;
 
   return (
@@ -1784,11 +1889,12 @@ const res = await fetch("/api/kpi/transactions", {
           {/* ── Left panel: Bio Break + Productivity Timer only ── */}
           {selectedAgent && (
             <div className="w-[280px] flex-shrink-0 border-r border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-y-auto">
-              <BioBreakPanel selectedAgent={selectedAgent} date={date} />
+             <BioBreakPanel selectedAgent={selectedAgent} date={date} onBioBreakChange={setTotalBioBreakSeconds} />
               <ProductivityTimer
                 agentId={selectedAgent._id}
                 date={date}
                 onProductivityChange={setTimerProductiveSeconds}
+                bioBreakSeconds={totalBioBreakSeconds}
               />
 
               {/* Log Transaction button in panel */}
@@ -1882,59 +1988,93 @@ const res = await fetch("/api/kpi/transactions", {
                     )}
                   </div>
 
-                 {/* Task type summary mini-table — counts based on countType */}
-{Object.keys(docTypeCountMap).length > 0 && (
-  <div className="pt-0.5">
-    <div className="rounded-lg border border-slate-200 dark:border-zinc-700 overflow-hidden text-[11px]">
-      <table className="border-collapse">
-        <thead>
-          <tr className="bg-slate-100 dark:bg-zinc-800">
-            <th className="px-2.5 py-1 text-left font-semibold text-slate-500 dark:text-zinc-400 border-r border-slate-200 dark:border-zinc-700 whitespace-nowrap">Task Type</th>
-            <th className="px-2.5 py-1 text-center font-semibold text-slate-500 dark:text-zinc-400 whitespace-nowrap">Count</th>
-           </tr>
-        </thead>
-        <tbody>
-          {(() => {
-            // Merge tx + subtask counts, respecting countType stored on each transaction/subtask
-            const merged: Record<string, number> = {};
+                {/* Task type summary — split by Production / Non-Production */}
+{Object.keys(docTypeCountMap).length > 0 && (() => {
+  // Build merged counts with category tracking
+  const mergedProd:    Record<string, { count: number; countType: CountType }> = {};
+  const mergedNonProd: Record<string, { count: number; countType: CountType }> = {};
 
-            transactions.forEach(tx => {
-              // Use the stored countType from the transaction, fallback to "transaction"
-              const add = tx.countType === "volume" ? (tx.volume ?? 1) : 1;
-              merged[tx.docType] = (merged[tx.docType] ?? 0) + add;
-            });
+  transactions.forEach(tx => {
+    const category = tx.taskCategory ?? "Production";
+    const add      = tx.countType === "volume" ? (tx.volume ?? 1) : 1;
+    const ct       = (tx.countType ?? "transaction") as CountType;
+    if (category === "Production") {
+      mergedProd[tx.docType] = { count: (mergedProd[tx.docType]?.count ?? 0) + add, countType: ct };
+    } else {
+      mergedNonProd[tx.docType] = { count: (mergedNonProd[tx.docType]?.count ?? 0) + add, countType: ct };
+    }
+  });
 
-            transactions.forEach(tx => {
-              (tx.subtasks ?? []).forEach(st => {
-                // Use the stored countType from the subtask, fallback to "transaction"
-                const add = st.countType === "volume" ? (st.number ?? 1) : 1;
-                merged[st.docType] = (merged[st.docType] ?? 0) + add;
-              });
-            });
+  transactions.forEach(tx => {
+    (tx.subtasks ?? []).forEach(st => {
+      // Fall back to parent tx category if subtask has no explicit category
+      const category = st.taskCategory ?? tx.taskCategory ?? "Production";
+      const add      = st.countType === "volume" ? (st.number ?? 1) : 1;
+      const ct       = (st.countType ?? "transaction") as CountType;
+      if (category === "Production") {
+        mergedProd[st.docType] = { count: (mergedProd[st.docType]?.count ?? 0) + add, countType: ct };
+      } else {
+        mergedNonProd[st.docType] = { count: (mergedNonProd[st.docType]?.count ?? 0) + add, countType: ct };
+      }
+    });
+  });
 
-            const entries = Object.entries(merged);
-            return entries.map(([name, count], i) => (
+  const prodEntries    = Object.entries(mergedProd);
+  const nonProdEntries = Object.entries(mergedNonProd);
+
+  const renderTable = (
+    entries: [string, { count: number; countType: CountType }][],
+    label: string,
+    isProduction: boolean
+  ) => {
+    if (entries.length === 0) return null;
+    return (
+      <div className="rounded-lg border border-slate-200 dark:border-zinc-700 overflow-hidden text-[11px]">
+        {/* Section header */}
+        <div className={`px-2.5 py-1 flex items-center gap-1.5 border-b border-slate-200 dark:border-zinc-700 ${
+          isProduction
+            ? "bg-indigo-50 dark:bg-indigo-950/30"
+            : "bg-slate-100 dark:bg-zinc-800"
+        }`}>
+          <span className="text-[10px]">{isProduction ? "⚙" : "✉"}</span>
+          <span className={`font-bold uppercase tracking-wider text-[9px] ${
+            isProduction ? "text-indigo-500" : "text-slate-400 dark:text-zinc-500"
+          }`}>{label}</span>
+        </div>
+        <table className="border-collapse w-full">
+          <thead>
+            <tr className="bg-slate-50 dark:bg-zinc-800/50">
+              <th className="px-2.5 py-1 text-left font-semibold text-slate-500 dark:text-zinc-400 border-r border-slate-200 dark:border-zinc-700 whitespace-nowrap">Task Type</th>
+              <th className="px-2.5 py-1 text-center font-semibold text-slate-500 dark:text-zinc-400 whitespace-nowrap">Count</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map(([name, { count, countType }], i) => (
               <tr key={name} className={i < entries.length - 1 ? "border-t border-slate-100 dark:border-zinc-800" : ""}>
                 <td className="px-2.5 py-1 text-slate-600 dark:text-zinc-300 border-r border-slate-200 dark:border-zinc-700 whitespace-nowrap">
                   <div className="flex items-center gap-1.5">
                     {name}
-                    {/* Get the countType from the first transaction or subtask of this type */}
-                    <CountTypeBadge countType={
-                      transactions.find(tx => tx.docType === name)?.countType ||
-                      transactions.find(tx => tx.subtasks?.some(st => st.docType === name))?.subtasks?.find(st => st.docType === name)?.countType ||
-                      "transaction"
-                    } />
+                    <CountTypeBadge countType={countType} />
                   </div>
-                 </td>
-                <td className="px-2.5 py-1 text-center font-bold text-indigo-500 dark:text-indigo-400 whitespace-nowrap">{count}</td>
-               </tr>
-            ));
-          })()}
-        </tbody>
-       </table>
+                </td>
+                <td className={`px-2.5 py-1 text-center font-bold whitespace-nowrap ${
+                  isProduction ? "text-indigo-500 dark:text-indigo-400" : "text-slate-500 dark:text-zinc-400"
+                }`}>{count}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  return (
+    <div className="pt-0.5 flex gap-2">
+      {renderTable(prodEntries, "Production", true)}
+      {renderTable(nonProdEntries, "Non-Production", false)}
     </div>
-  </div>
-)}
+  );
+})()}
 
                   {/* Hold summary */}
                   {stats.hold > 0 && (
@@ -2026,86 +2166,113 @@ const res = await fetch("/api/kpi/transactions", {
       )}
 
       {/* ── Settings modal ── */}
-      {showSettings && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm" onClick={() => setShowSettings(false)}>
-          <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 w-[540px] max-h-[80vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
-            <h2 className="text-base font-semibold text-slate-900 dark:text-zinc-100 mb-5">Manage Setup</h2>
-            <div className="mb-6">
-              <div className="flex items-center gap-2 mb-3">
-                <Users size={13} className="text-indigo-500" />
-                <p className="text-xs font-semibold text-slate-600 dark:text-zinc-300 uppercase tracking-wider">Agents</p>
-              </div>
-              <div className="flex gap-2 mb-3">
-                <input value={newAgent} onChange={e => setNewAgent(e.target.value)} onKeyDown={e => e.key === "Enter" && addAgent()} placeholder="Agent name…" className={inputCls} />
-                <input value={newAgentGroup} onChange={e => setNewAgentGroup(e.target.value)} onKeyDown={e => e.key === "Enter" && addAgent()} placeholder="Group…" className="w-32 bg-white dark:bg-zinc-700 border border-slate-200 dark:border-zinc-600 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-zinc-200 placeholder:text-slate-400 focus:outline-none focus:border-indigo-400" />
-                <button onClick={addAgent} className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-colors">Add</button>
-              </div>
-              <div className="space-y-1.5">
-                {agents.map(a => (
-                  <div key={a._id} className="flex items-center gap-2 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg px-3 py-2">
-                    <div className="flex-1 flex items-center gap-2 min-w-0">
-                      <span className="text-sm text-slate-700 dark:text-zinc-200 truncate">{a.name}</span>
-                      {a.group && <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-500 text-[10px] font-semibold">{a.group}</span>}
-                    </div>
-                    <input value={a.group ?? ""} onChange={e => setAgents(prev => prev.map(ag => ag._id === a._id ? { ...ag, group: e.target.value } : ag))}
-                      onBlur={e => updateAgentGroup(a._id, e.target.value.trim())}
-                      onKeyDown={e => { if (e.key === "Enter") { updateAgentGroup(a._id, (e.target as HTMLInputElement).value.trim()); (e.target as HTMLInputElement).blur(); } }}
-                      placeholder="No group" className="w-24 bg-white dark:bg-zinc-700 border border-slate-200 dark:border-zinc-600 rounded-md px-2 py-1 text-xs text-slate-600 dark:text-zinc-200 focus:outline-none focus:border-indigo-400" />
-                    <button onClick={() => deleteAgent(a._id)} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={13} /></button>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <Tag size={13} className="text-indigo-500" />
-                <p className="text-xs font-semibold text-slate-600 dark:text-zinc-300 uppercase tracking-wider">Task Types</p>
-              </div>
-              <div className="flex gap-2 mb-3">
-                <input value={newDocType} onChange={e => setNewDocType(e.target.value)} onKeyDown={e => e.key === "Enter" && addDocType()} placeholder="Task type name…" className={inputCls} />
-                {/* Prod / Non-Prod toggle */}
-                <div className="flex rounded-lg border border-slate-200 dark:border-zinc-700 overflow-hidden text-xs font-semibold flex-shrink-0">
-                  <button type="button" onClick={() => setNewDocTypeCategory("Production")} className={`px-2.5 py-2 transition-colors ${newDocTypeCategory === "Production" ? "bg-indigo-50 text-indigo-600 border-r border-indigo-200" : "text-slate-400 hover:bg-slate-50 border-r border-slate-200"}`} title="Production">⚙ Prod</button>
-                  <button type="button" onClick={() => setNewDocTypeCategory("Non-Production")} className={`px-2.5 py-2 transition-colors ${newDocTypeCategory === "Non-Production" ? "bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300" : "text-slate-400 hover:bg-slate-50"}`} title="Non-Production">✉ Non</button>
-                </div>
-                {/* TX / Volume count type toggle */}
-                <div className="flex rounded-lg border border-slate-200 dark:border-zinc-700 overflow-hidden text-xs font-semibold flex-shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setNewDocTypeCountType("transaction")}
-                    className={`px-2.5 py-2 transition-colors ${newDocTypeCountType === "transaction" ? "bg-indigo-50 text-indigo-600 border-r border-indigo-200" : "text-slate-400 hover:bg-slate-50 border-r border-slate-200"}`}
-                    title="Count by transaction"
-                  >
-                    # TX
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setNewDocTypeCountType("volume")}
-                    className={`px-2.5 py-2 transition-colors ${newDocTypeCountType === "volume" ? "bg-emerald-50 text-emerald-600" : "text-slate-400 hover:bg-slate-50"}`}
-                    title="Count by volume"
-                  >
-                    Vol
-                  </button>
-                </div>
-                <button onClick={addDocType} className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-colors">Add</button>
-              </div>
-              <div className="space-y-1.5">
-                {docTypes.map(dt => (
-                  <div key={dt._id} className="flex items-center justify-between bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-slate-700 dark:text-zinc-200">{dt.name}</span>
-                      <CategoryBadge category={dt.taskCategory ?? "Production"} />
-                      <CountTypeBadge countType={dt.countType ?? "transaction"} />
-                    </div>
-                    <button onClick={() => deleteDocType(dt._id)} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={13} /></button>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <button onClick={() => setShowSettings(false)} className="mt-6 w-full py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 text-sm font-medium hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors">Done</button>
-          </div>
+{showSettings && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm" onClick={() => setShowSettings(false)}>
+    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 w-[540px] max-h-[80vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
+      <h2 className="text-base font-semibold text-slate-900 dark:text-zinc-100 mb-5">Manage Setup</h2>
+
+      {/* Agents section */}
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-3">
+          <Users size={13} className="text-indigo-500" />
+          <p className="text-xs font-semibold text-slate-600 dark:text-zinc-300 uppercase tracking-wider">Agents</p>
         </div>
-      )}
+        <div className="flex gap-2 mb-3">
+          <input value={newAgent} onChange={e => setNewAgent(e.target.value)} onKeyDown={e => e.key === "Enter" && addAgent()} placeholder="Agent name…" className={inputCls} />
+          <input value={newAgentGroup} onChange={e => setNewAgentGroup(e.target.value)} onKeyDown={e => e.key === "Enter" && addAgent()} placeholder="Group…" className="w-32 bg-white dark:bg-zinc-700 border border-slate-200 dark:border-zinc-600 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-zinc-200 placeholder:text-slate-400 focus:outline-none focus:border-indigo-400" />
+          <button onClick={addAgent} className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-colors">Add</button>
+        </div>
+        <div className="space-y-1.5">
+          {agents.map(a => (
+            <div key={a._id} className="flex items-center gap-2 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg px-3 py-2">
+              <div className="flex-1 flex items-center gap-2 min-w-0">
+                <span className="text-sm text-slate-700 dark:text-zinc-200 truncate">{a.name}</span>
+                {a.group && <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-500 text-[10px] font-semibold">{a.group}</span>}
+              </div>
+              <input value={a.group ?? ""} onChange={e => setAgents(prev => prev.map(ag => ag._id === a._id ? { ...ag, group: e.target.value } : ag))}
+                onBlur={e => updateAgentGroup(a._id, e.target.value.trim())}
+                onKeyDown={e => { if (e.key === "Enter") { updateAgentGroup(a._id, (e.target as HTMLInputElement).value.trim()); (e.target as HTMLInputElement).blur(); } }}
+                placeholder="No group" className="w-24 bg-white dark:bg-zinc-700 border border-slate-200 dark:border-zinc-600 rounded-md px-2 py-1 text-xs text-slate-600 dark:text-zinc-200 focus:outline-none focus:border-indigo-400" />
+              <button onClick={() => deleteAgent(a._id)} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={13} /></button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Task Types section */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <Tag size={13} className="text-indigo-500" />
+          <p className="text-xs font-semibold text-slate-600 dark:text-zinc-300 uppercase tracking-wider">Task Types</p>
+        </div>
+        <div className="flex gap-2 mb-3">
+          <input value={newDocType} onChange={e => setNewDocType(e.target.value)} onKeyDown={e => e.key === "Enter" && addDocType()} placeholder="Task type name…" className={inputCls} />
+          <div className="flex rounded-lg border border-slate-200 dark:border-zinc-700 overflow-hidden text-xs font-semibold flex-shrink-0">
+            <button type="button" onClick={() => setNewDocTypeCategory("Production")} className={`px-2.5 py-2 transition-colors ${newDocTypeCategory === "Production" ? "bg-indigo-50 text-indigo-600 border-r border-indigo-200" : "text-slate-400 hover:bg-slate-50 border-r border-slate-200"}`}>⚙ Prod</button>
+            <button type="button" onClick={() => setNewDocTypeCategory("Non-Production")} className={`px-2.5 py-2 transition-colors ${newDocTypeCategory === "Non-Production" ? "bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300" : "text-slate-400 hover:bg-slate-50"}`}>✉ Non</button>
+          </div>
+          <div className="flex rounded-lg border border-slate-200 dark:border-zinc-700 overflow-hidden text-xs font-semibold flex-shrink-0">
+            <button type="button" onClick={() => setNewDocTypeCountType("transaction")} className={`px-2.5 py-2 transition-colors ${newDocTypeCountType === "transaction" ? "bg-indigo-50 text-indigo-600 border-r border-indigo-200" : "text-slate-400 hover:bg-slate-50 border-r border-slate-200"}`}># TX</button>
+            <button type="button" onClick={() => setNewDocTypeCountType("volume")} className={`px-2.5 py-2 transition-colors ${newDocTypeCountType === "volume" ? "bg-emerald-50 text-emerald-600" : "text-slate-400 hover:bg-slate-50"}`}>Vol</button>
+          </div>
+          <button onClick={addDocType} className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-colors">Add</button>
+        </div>
+
+        <div className="space-y-1.5">
+          {docTypes.map(dt => (
+            <div key={dt._id} className="rounded-lg border border-slate-200 dark:border-zinc-700 overflow-hidden">
+              {editingDocTypeId === dt._id ? (
+                <div className="flex flex-wrap items-center gap-2 bg-indigo-50 dark:bg-indigo-950/20 px-3 py-2.5">
+                  <input
+                    value={editDocTypeName}
+                    onChange={e => setEditDocTypeName(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") updateDocType(dt._id); if (e.key === "Escape") setEditingDocTypeId(null); }}
+                    autoFocus
+                    className="flex-1 min-w-[120px] bg-white dark:bg-zinc-800 border border-indigo-300 dark:border-indigo-700 rounded-md px-2.5 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all"
+                  />
+                  <div className="flex rounded-lg border border-slate-200 dark:border-zinc-700 overflow-hidden text-xs font-semibold flex-shrink-0">
+                    <button type="button" onClick={() => setEditDocTypeCategory("Production")} className={`px-2.5 py-1.5 transition-colors ${editDocTypeCategory === "Production" ? "bg-indigo-100 text-indigo-600 border-r border-indigo-200" : "text-slate-400 hover:bg-slate-50 border-r border-slate-200 dark:border-zinc-600"}`}>⚙ Prod</button>
+                    <button type="button" onClick={() => setEditDocTypeCategory("Non-Production")} className={`px-2.5 py-1.5 transition-colors ${editDocTypeCategory === "Non-Production" ? "bg-slate-100 dark:bg-zinc-700 text-slate-600 dark:text-zinc-300" : "text-slate-400 hover:bg-slate-50"}`}>✉ Non</button>
+                  </div>
+                  <div className="flex rounded-lg border border-slate-200 dark:border-zinc-700 overflow-hidden text-xs font-semibold flex-shrink-0">
+                    <button type="button" onClick={() => setEditDocTypeCountType("transaction")} className={`px-2.5 py-1.5 transition-colors ${editDocTypeCountType === "transaction" ? "bg-indigo-100 text-indigo-600 border-r border-indigo-200" : "text-slate-400 hover:bg-slate-50 border-r border-slate-200 dark:border-zinc-600"}`}># TX</button>
+                    <button type="button" onClick={() => setEditDocTypeCountType("volume")} className={`px-2.5 py-1.5 transition-colors ${editDocTypeCountType === "volume" ? "bg-emerald-50 text-emerald-600" : "text-slate-400 hover:bg-slate-50"}`}>Vol</button>
+                  </div>
+                  <button onClick={() => updateDocType(dt._id)} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors">Save</button>
+                  <button onClick={() => setEditingDocTypeId(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 transition-colors"><X size={13} /></button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between bg-slate-50 dark:bg-zinc-800 px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-slate-700 dark:text-zinc-200">{dt.name}</span>
+                    <CategoryBadge category={dt.taskCategory ?? "Production"} />
+                    <CountTypeBadge countType={dt.countType ?? "transaction"} />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setEditingDocTypeId(dt._id);
+                        setEditDocTypeName(dt.name);
+                        setEditDocTypeCategory(dt.taskCategory ?? "Production");
+                        setEditDocTypeCountType(dt.countType ?? "transaction");
+                      }}
+                      className="text-slate-300 dark:text-zinc-600 hover:text-indigo-500 transition-colors"
+                      title="Edit task type"
+                    ><Pencil size={13} /></button>
+                    <button onClick={() => deleteDocType(dt._id)} className="text-slate-300 dark:text-zinc-600 hover:text-red-500 transition-colors"><Trash2 size={13} /></button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <button onClick={() => setShowSettings(false)} className="mt-6 w-full py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 text-sm font-medium hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors">Done</button>
+    </div>
+  </div>
+)}
+      
 
       {/* ── Edit Transaction modal ── */}
       {editingTx && (
