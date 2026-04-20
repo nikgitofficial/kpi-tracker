@@ -576,10 +576,31 @@ const cancelEnd = () => setPendingEnd(null);
             </>
           )}
           {isDone && (
-            <button onClick={handleReset} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-zinc-400 text-xs font-semibold hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors">
-              <Plus size={12} className="rotate-45" /> Reset
-            </button>
-          )}
+  <>
+    <button
+      onClick={handleReset}
+      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-zinc-400 text-xs font-semibold hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors"
+    >
+      <Plus size={12} className="rotate-45" /> Reset
+    </button>
+    <button
+      onClick={() => {
+        const epoch = Date.now();
+        setTimer(prev => ({ ...prev, running: true, paused: false, startEpoch: epoch }));
+        if (timerTxId) {
+          fetch("/api/kpi/transactions", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: timerTxId, timerStartEpoch: epoch, timerPaused: false }),
+          }).catch(() => {});
+        }
+      }}
+      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 text-xs font-semibold hover:bg-emerald-100 transition-colors"
+    >
+      <Play size={12} /> Continue
+    </button>
+  </>
+)}
         </div>
     </div>
 
