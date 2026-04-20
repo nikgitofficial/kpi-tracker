@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { DailyReportModal } from "@/components/kpi/DailyReportModal";
 import {
   Users, TrendingUp, Clock, CheckCircle2, FileText, FileSpreadsheet,
   ChevronDown, ChevronRight, Layers, Ungroup, Building2, Package,
@@ -678,6 +679,10 @@ export default function ProductivityPage() {
               <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
               Refresh
             </button>
+            <DailyReportModal
+  date={from}
+  data={{ grouped, groups, globalDocTypeCounts, dailySummary }}
+/>
             <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700 mx-1" />
             <button onClick={() => setIsGrouped(g => !g)}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${

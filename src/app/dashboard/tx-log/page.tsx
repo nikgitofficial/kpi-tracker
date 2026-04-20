@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   Plus, Trash2, Pencil, CheckCircle2,
   Clock, AlertTriangle, Users, Tag, FileText, FileSpreadsheet,
@@ -887,19 +888,27 @@ function TxTableRow({ tx, index, docTypeCount, subtaskDocTypeTotals, docTypes, o
   const [expanded,        setExpanded]        = useState(false);
   const [showSubtaskForm, setShowSubtaskForm] = useState(false);
   const [hovered,         setHovered]         = useState(false);
+  const [tooltipPos,      setTooltipPos]      = useState({ x: 0, y: 0 });
   const subtasks = tx.subtasks ?? [];
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    setTooltipPos({ x: e.clientX, y: e.clientY });
+  };
 
   return (
     <>
       <tr
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
+        onMouseMove={handleMouseMove}
+        onClick={() => onEdit(tx)}
+        style={{ cursor: "pointer" }}
         className={`border-b border-slate-100 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors ${tx.status === "HOLD" ? "bg-sky-50/30 dark:bg-sky-950/10" : ""}`}
       >
-        <td className="px-4 py-3 text-slate-400 dark:text-zinc-500 text-xs">
+        <td className="px-4 py-3 text-slate-400 dark:text-zinc-500 text-xs" onClick={e => e.stopPropagation()}>
           <div className="flex items-center gap-1.5">
             <button
-              onClick={() => { setExpanded(e => !e); if (!expanded) setShowSubtaskForm(false); }}
+              onClick={(e) => { e.stopPropagation(); setExpanded(exp => !exp); if (!expanded) setShowSubtaskForm(false); }}
               className={`transition-colors ${subtasks.length > 0 ? "text-indigo-400 hover:text-indigo-600" : "text-slate-200 dark:text-zinc-700 hover:text-slate-400"}`}
             >
               {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
@@ -921,7 +930,7 @@ function TxTableRow({ tx, index, docTypeCount, subtaskDocTypeTotals, docTypes, o
             <StatusBadge status={tx.status} />
             {tx.status === "HOLD" && (
               <button
-                onClick={() => onResume(tx)}
+                onClick={(e) => { e.stopPropagation(); onResume(tx); }}
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-600 text-[10px] font-semibold hover:bg-emerald-100 transition-colors"
               >
                 <Play size={9} /> Resume
@@ -932,20 +941,76 @@ function TxTableRow({ tx, index, docTypeCount, subtaskDocTypeTotals, docTypes, o
 
         <td className="px-4 py-3 text-slate-400 dark:text-zinc-500 text-xs max-w-[160px] truncate" title={tx.notes}>{tx.notes ?? "—"}</td>
 
-       <td className="px-4 py-3">
-         <div className="flex items-center gap-2">
+        <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => { setExpanded(true); setShowSubtaskForm(true); }}
+              onClick={(e) => { e.stopPropagation(); setExpanded(true); setShowSubtaskForm(true); }}
               className="text-slate-300 dark:text-zinc-600 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors"
               title="Add subtask"
             >
               <ListPlus size={13} />
             </button>
-            <button onClick={() => onEdit(tx)} className="text-slate-300 dark:text-zinc-600 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors"><Pencil size={13} /></button>
-            <button onClick={() => onDelete(tx._id)} className="text-slate-300 dark:text-zinc-600 hover:text-red-500 transition-colors"><Trash2 size={13} /></button>
+            <button onClick={(e) => { e.stopPropagation(); onEdit(tx); }} className="text-slate-300 dark:text-zinc-600 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors"><Pencil size={13} /></button>
+            <button onClick={(e) => { e.stopPropagation(); onDelete(tx._id); }} className="text-slate-300 dark:text-zinc-600 hover:text-red-500 transition-colors"><Trash2 size={13} /></button>
           </div>
         </td>
       </tr>
+
+      {/* Hover Tooltip */}
+      {hovered && typeof window !== "undefined" && createPortal(
+        <div
+          style={{
+            position: "fixed",
+            left: tooltipPos.x + 16,
+            top: tooltipPos.y - 10,
+            zIndex: 9999,
+            pointerEvents: "none",
+            transform: tooltipPos.x > window.innerWidth - 280 ? "translateX(-110%)" : undefined,
+          }}
+          className="w-64 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl shadow-xl shadow-slate-200/60 dark:shadow-black/40 p-3 space-y-2"
+        >
+          {/* Header */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-bold text-slate-800 dark:text-zinc-100 truncate">{tx.docType}</p>
+              <p className="text-[10px] text-slate-400 dark:text-zinc-500 truncate mt-0.5">{tx.companyName}</p>
+            </div>
+            <StatusBadge status={tx.status} />
+          </div>
+
+          {/* Details grid */}
+          <div className="grid grid-cols-2 gap-1.5">
+            <div className="rounded-lg bg-slate-50 dark:bg-zinc-800 border border-slate-100 dark:border-zinc-700 px-2 py-1.5">
+              <p className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide">Volume</p>
+              <p className="text-xs font-bold text-slate-700 dark:text-zinc-200 mt-0.5">{tx.volume}</p>
+            </div>
+            <div className="rounded-lg bg-slate-50 dark:bg-zinc-800 border border-slate-100 dark:border-zinc-700 px-2 py-1.5">
+              <p className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide">Category</p>
+              <div className="mt-0.5"><CategoryBadge category={tx.taskCategory} /></div>
+            </div>
+          </div>
+
+          {/* Subtasks count */}
+          {(tx.subtasks ?? []).length > 0 && (
+            <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50">
+              <ListPlus size={10} className="text-indigo-400" />
+              <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold">{tx.subtasks!.length} subtask{tx.subtasks!.length !== 1 ? "s" : ""}</span>
+            </div>
+          )}
+
+          {/* Notes */}
+          {tx.notes && (
+            <div className="px-2 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30">
+              <p className="text-[9px] text-amber-500 dark:text-amber-400 uppercase tracking-wide font-semibold mb-0.5">Note</p>
+              <p className="text-[10px] text-amber-700 dark:text-amber-300 leading-tight line-clamp-2">{tx.notes}</p>
+            </div>
+          )}
+
+          {/* Click hint */}
+          <p className="text-[9px] text-slate-300 dark:text-zinc-600 text-center pt-0.5">Click row to edit</p>
+        </div>,
+        document.body
+      )}
 
       {expanded && (
         <>
@@ -968,7 +1033,7 @@ function TxTableRow({ tx, index, docTypeCount, subtaskDocTypeTotals, docTypes, o
                   <AddSubtaskInlineRow
                     docTypes={docTypes}
                     txId={tx._id}
-                    parentCategory={tx.taskCategory ?? "Production"} 
+                    parentCategory={tx.taskCategory ?? "Production"}
                     onAdded={(updated) => { onTxUpdated(updated); setShowSubtaskForm(false); }}
                     onCancel={() => setShowSubtaskForm(false)}
                   />
@@ -979,7 +1044,7 @@ function TxTableRow({ tx, index, docTypeCount, subtaskDocTypeTotals, docTypes, o
             <tr className="border-b border-slate-100 dark:border-zinc-800/50">
               <td colSpan={6} className="pl-10 pr-4 py-2">
                 <button
-                  onClick={() => setShowSubtaskForm(true)}
+                  onClick={(e) => { e.stopPropagation(); setShowSubtaskForm(true); }}
                   className="inline-flex items-center gap-1.5 text-[11px] text-indigo-400 hover:text-indigo-600 font-medium transition-colors"
                 >
                   <Plus size={11} /> Add subtask
@@ -992,7 +1057,6 @@ function TxTableRow({ tx, index, docTypeCount, subtaskDocTypeTotals, docTypes, o
     </>
   );
 }
-
 /* ═══════════════════════════════════════════════════════
    ─── Bio Break Panel
    ═══════════════════════════════════════════════════════ */
@@ -2129,17 +2193,17 @@ const res = await fetch("/api/kpi/transactions", {
                   <tbody>
                     {filteredTransactions.map((tx, i) => (
                       <TxTableRow
-                        key={tx._id}
-                        tx={tx}
-                        index={i}
-                        docTypeCount={docTypeCountMap[tx.docType] ?? 1}
-                        subtaskDocTypeTotals={subtaskDocTypeTotals}
-                        docTypes={docTypes}
-                        onEdit={openEdit}
-                        onDelete={setDeletingId}
-                        onTxUpdated={handleTxUpdated}
-                        onResume={handleResume}
-                      />
+  key={tx._id}
+  tx={tx}
+  index={i}
+  docTypeCount={docTypeCountMap[tx.docType] ?? 1}
+  subtaskDocTypeTotals={subtaskDocTypeTotals}
+  docTypes={docTypes}
+  onEdit={openEdit}
+  onDelete={setDeletingId}
+  onTxUpdated={handleTxUpdated}
+  onResume={handleResume}
+/>
                     ))}
 
                     {filteredTransactions.length === 0 && transactions.length > 0 && (
