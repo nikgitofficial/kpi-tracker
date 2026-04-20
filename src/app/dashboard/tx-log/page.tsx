@@ -889,17 +889,43 @@ function TxTableRow({ tx, index, docTypeCount, subtaskDocTypeTotals, docTypes, o
   const [showSubtaskForm, setShowSubtaskForm] = useState(false);
   const [hovered,         setHovered]         = useState(false);
   const [tooltipPos,      setTooltipPos]      = useState({ x: 0, y: 0 });
+  const hoveredRef = useRef(false); // ref to track hover in keyboard handler
   const subtasks = tx.subtasks ?? [];
 
   const handleMouseMove = (e: React.MouseEvent) => {
     setTooltipPos({ x: e.clientX, y: e.clientY });
   };
 
+  // Keyboard shortcuts — only fires when this row is hovered
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!hoveredRef.current) return;
+      // Don't fire if user is typing in an input/textarea/select
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      if (e.key === "1") {
+        e.preventDefault();
+        setExpanded(true);
+        setShowSubtaskForm(true);
+      } else if (e.key === "2") {
+        e.preventDefault();
+        onEdit(tx);
+      } else if (e.key === "3") {
+        e.preventDefault();
+        onDelete(tx._id);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [tx, onEdit, onDelete]);
+
   return (
     <>
       <tr
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
+        onMouseEnter={() => { setHovered(true); hoveredRef.current = true; }}
+        onMouseLeave={() => { setHovered(false); hoveredRef.current = false; }}
         onMouseMove={handleMouseMove}
         onClick={() => onEdit(tx)}
         style={{ cursor: "pointer" }}
@@ -943,15 +969,47 @@ function TxTableRow({ tx, index, docTypeCount, subtaskDocTypeTotals, docTypes, o
 
         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
           <div className="flex items-center gap-2">
+            {/* 1 - Add Subtask */}
             <button
               onClick={(e) => { e.stopPropagation(); setExpanded(true); setShowSubtaskForm(true); }}
-              className="text-slate-300 dark:text-zinc-600 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors"
-              title="Add subtask"
+              className="group relative flex items-center justify-center w-6 h-6 rounded-md hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors"
+              title="Add subtask [1]"
             >
-              <ListPlus size={13} />
+              <ListPlus size={13} className="text-slate-300 dark:text-zinc-600 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors" />
+              <span className={`absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full border text-[8px] font-bold flex items-center justify-center leading-none transition-colors ${
+                hovered
+                  ? "bg-indigo-500 text-white border-indigo-500"
+                  : "bg-indigo-100 dark:bg-indigo-900/60 border-indigo-200 dark:border-indigo-800 text-indigo-500 dark:text-indigo-400"
+              }`}>1</span>
             </button>
-            <button onClick={(e) => { e.stopPropagation(); onEdit(tx); }} className="text-slate-300 dark:text-zinc-600 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors"><Pencil size={13} /></button>
-            <button onClick={(e) => { e.stopPropagation(); onDelete(tx._id); }} className="text-slate-300 dark:text-zinc-600 hover:text-red-500 transition-colors"><Trash2 size={13} /></button>
+
+            {/* 2 - Edit */}
+            <button
+              onClick={(e) => { e.stopPropagation(); onEdit(tx); }}
+              className="group relative flex items-center justify-center w-6 h-6 rounded-md hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors"
+              title="Edit transaction [2]"
+            >
+              <Pencil size={13} className="text-slate-300 dark:text-zinc-600 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors" />
+              <span className={`absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full border text-[8px] font-bold flex items-center justify-center leading-none transition-colors ${
+                hovered
+                  ? "bg-slate-500 text-white border-slate-500"
+                  : "bg-slate-100 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-400 dark:text-zinc-500"
+              }`}>2</span>
+            </button>
+
+            {/* 3 - Delete */}
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(tx._id); }}
+              className="group relative flex items-center justify-center w-6 h-6 rounded-md hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+              title="Delete transaction [3]"
+            >
+              <Trash2 size={13} className="text-slate-300 dark:text-zinc-600 group-hover:text-red-500 transition-colors" />
+              <span className={`absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full border text-[8px] font-bold flex items-center justify-center leading-none transition-colors ${
+                hovered
+                  ? "bg-red-500 text-white border-red-500"
+                  : "bg-slate-100 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-400 dark:text-zinc-500"
+              }`}>3</span>
+            </button>
           </div>
         </td>
       </tr>
@@ -969,7 +1027,6 @@ function TxTableRow({ tx, index, docTypeCount, subtaskDocTypeTotals, docTypes, o
           }}
           className="w-64 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl shadow-xl shadow-slate-200/60 dark:shadow-black/40 p-3 space-y-2"
         >
-          {/* Header */}
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
               <p className="text-[11px] font-bold text-slate-800 dark:text-zinc-100 truncate">{tx.docType}</p>
@@ -978,7 +1035,6 @@ function TxTableRow({ tx, index, docTypeCount, subtaskDocTypeTotals, docTypes, o
             <StatusBadge status={tx.status} />
           </div>
 
-          {/* Details grid */}
           <div className="grid grid-cols-2 gap-1.5">
             <div className="rounded-lg bg-slate-50 dark:bg-zinc-800 border border-slate-100 dark:border-zinc-700 px-2 py-1.5">
               <p className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide">Volume</p>
@@ -990,7 +1046,6 @@ function TxTableRow({ tx, index, docTypeCount, subtaskDocTypeTotals, docTypes, o
             </div>
           </div>
 
-          {/* Subtasks count */}
           {(tx.subtasks ?? []).length > 0 && (
             <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50">
               <ListPlus size={10} className="text-indigo-400" />
@@ -998,7 +1053,6 @@ function TxTableRow({ tx, index, docTypeCount, subtaskDocTypeTotals, docTypes, o
             </div>
           )}
 
-          {/* Notes */}
           {tx.notes && (
             <div className="px-2 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30">
               <p className="text-[9px] text-amber-500 dark:text-amber-400 uppercase tracking-wide font-semibold mb-0.5">Note</p>
@@ -1006,8 +1060,19 @@ function TxTableRow({ tx, index, docTypeCount, subtaskDocTypeTotals, docTypes, o
             </div>
           )}
 
-          {/* Click hint */}
-          <p className="text-[9px] text-slate-300 dark:text-zinc-600 text-center pt-0.5">Click row to edit</p>
+          {/* Keyboard hint */}
+          <div className="flex items-center justify-center gap-2 pt-0.5">
+            {[
+              { key: "1", label: "Subtask", color: "bg-indigo-500" },
+              { key: "2", label: "Edit",    color: "bg-slate-500"  },
+              { key: "3", label: "Delete",  color: "bg-red-500"    },
+            ].map(k => (
+              <div key={k.key} className="flex items-center gap-1">
+                <span className={`w-4 h-4 rounded ${k.color} text-white text-[9px] font-bold flex items-center justify-center`}>{k.key}</span>
+                <span className="text-[9px] text-slate-300 dark:text-zinc-600">{k.label}</span>
+              </div>
+            ))}
+          </div>
         </div>,
         document.body
       )}
