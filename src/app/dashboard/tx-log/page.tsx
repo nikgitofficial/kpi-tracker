@@ -678,37 +678,67 @@ interface SubtaskRowProps {
 function SubtaskRow({ subtask, index, txId, docTypes, parentCategory, onUpdated, onDeleted }: SubtaskRowProps) {
   const [editing,   setEditing]   = useState(false);
   const [stDocType, setStDocType] = useState(subtask.docType);
-  const [stNumber,  setStNumber]  = useState(String(subtask.number ?? ""));
   const [stStatus,  setStStatus]  = useState(subtask.status);
   const [stNotes,   setStNotes]   = useState(subtask.notes ?? "");
   const [saving,    setSaving]    = useState(false);
   const [deleting,  setDeleting]  = useState(false);
   const [hovered,   setHovered]   = useState(false);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const hoveredRef = useRef(false);
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    setTooltipPos({ x: e.clientX, y: e.clientY });
+  };
+
+  // Keyboard shortcuts — only when this subtask row is hovered
+  // Keyboard shortcuts — only when this subtask row is hovered
+useEffect(() => {
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (!hoveredRef.current) return;
+    const tag = (e.target as HTMLElement).tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+    if (e.key === "1") {
+      e.preventDefault();
+      setEditing(true);
+    } else if (e.key === "2") {
+      e.preventDefault();
+      // Call delete inline instead of referencing handleDelete
+      fetch("/api/kpi/transactions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: txId, subtaskAction: "DELETE", subtaskId: subtask._id }),
+      }).then(res => {
+        if (res.ok) res.json().then(d => onDeleted(d.transaction));
+      });
+    }
+  };
+  window.addEventListener("keydown", handleKeyDown);
+  return () => window.removeEventListener("keydown", handleKeyDown);
+}, [subtask._id, txId, onDeleted]); // ← correct deps
 
   const handleSave = async () => {
-  setSaving(true);
-  const selectedDt = docTypes.find(dt => dt.name === stDocType);
-  const subtaskCategory = selectedDt?.taskCategory ?? parentCategory;
-
-  const res = await fetch("/api/kpi/transactions", {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      id: txId,
-      subtaskAction: "UPDATE",      // ← change "ADD" to "UPDATE"
-      subtaskId: subtask._id,       // ← add the subtask id
-      subtask: {
-        docType:      stDocType,
-        number:       stNumber ? Number(stNumber) : undefined,
-        notes:        stNotes.trim() || undefined,
-        status:       stStatus,
-        taskCategory: subtaskCategory,
-      },
-    }),
-  });
-  setSaving(false);
-  if (res.ok) { const d = await res.json(); onUpdated(d.transaction); setEditing(false); }
-};
+    setSaving(true);
+    const selectedDt = docTypes.find(dt => dt.name === stDocType);
+    const subtaskCategory = selectedDt?.taskCategory ?? parentCategory;
+    const res = await fetch("/api/kpi/transactions", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: txId,
+        subtaskAction: "UPDATE",
+        subtaskId: subtask._id,
+        subtask: {
+          docType:      stDocType,
+          notes:        stNotes.trim() || undefined,
+          status:       stStatus,
+          taskCategory: subtaskCategory,
+        },
+      }),
+    });
+    setSaving(false);
+    if (res.ok) { const d = await res.json(); onUpdated(d.transaction); setEditing(false); }
+  };
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -731,9 +761,8 @@ function SubtaskRow({ subtask, index, txId, docTypes, parentCategory, onUpdated,
           </select>
         </td>
         <td className="px-2 py-2">
-          <input type="number" min="1" value={stNumber} onChange={e => setStNumber(e.target.value)} placeholder="#" className={inputSmCls} />
+          <CategoryBadge category={docTypes.find(dt => dt.name === stDocType)?.taskCategory ?? subtask.taskCategory} />
         </td>
-        <td className="px-2 py-2"><CategoryBadge category={subtask.taskCategory} /></td>
         <td className="px-2 py-2">
           <select value={stStatus} onChange={e => setStStatus(e.target.value as Subtask["status"])} className={selectSmCls}>
             <option value="COMPLETION">Completion</option>
@@ -758,24 +787,129 @@ function SubtaskRow({ subtask, index, txId, docTypes, parentCategory, onUpdated,
   }
 
   return (
-    <tr
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      className="border-b border-slate-100/70 dark:border-zinc-800/50 bg-slate-50/30 dark:bg-zinc-900/20 hover:bg-slate-50 dark:hover:bg-zinc-800/30 transition-colors"
-    >
-      <td className="pl-10 pr-2 py-2 text-slate-300 dark:text-zinc-600 text-xs">↳ {index + 1}</td>
-      <td className="px-4 py-2 text-slate-500 dark:text-zinc-400 text-xs">{subtask.docType}</td>
-      <td className="px-4 py-2 text-slate-500 dark:text-zinc-400 text-xs font-mono">{subtask.number ?? "—"}</td>
-      <td className="px-4 py-2"><CategoryBadge category={subtask.taskCategory} /></td>
-      <td className="px-4 py-2"><StatusBadge status={subtask.status} /></td>
-      <td className="px-4 py-2 text-slate-400 dark:text-zinc-500 text-xs max-w-[120px] truncate">{subtask.notes ?? "—"}</td>
-      <td className="px-4 py-2">
-        <div className="flex items-center gap-2">
-          <button onClick={() => setEditing(true)} className="text-slate-300 dark:text-zinc-600 hover:text-indigo-500 transition-colors"><Pencil size={12} /></button>
-          <button onClick={handleDelete} disabled={deleting} className="text-slate-300 dark:text-zinc-600 hover:text-red-500 transition-colors disabled:opacity-50"><Trash2 size={12} /></button>
-        </div>
-      </td>
-    </tr>
+    <>
+      <tr
+        onMouseEnter={() => { setHovered(true); hoveredRef.current = true; }}
+        onMouseLeave={() => { setHovered(false); hoveredRef.current = false; }}
+        onMouseMove={handleMouseMove}
+        onClick={() => setEditing(true)}
+        style={{ cursor: "pointer" }}
+        className="border-b border-slate-100/70 dark:border-zinc-800/50 bg-slate-50/30 dark:bg-zinc-900/20 hover:bg-slate-50 dark:hover:bg-zinc-800/30 transition-colors"
+      >
+        {/* # */}
+        <td className="pl-10 pr-2 py-2 text-slate-300 dark:text-zinc-600 text-xs">
+          ↳ {index + 1}
+        </td>
+
+        {/* Type of Task */}
+        <td className="px-4 py-2 text-slate-500 dark:text-zinc-400 text-xs">
+          {subtask.docType}
+        </td>
+
+        {/* Category */}
+        <td className="px-4 py-2">
+          <CategoryBadge category={subtask.taskCategory} />
+        </td>
+
+        {/* Status */}
+        <td className="px-4 py-2">
+          <StatusBadge status={subtask.status} />
+        </td>
+
+        {/* Notes */}
+        <td className="px-4 py-2 text-slate-400 dark:text-zinc-500 text-xs max-w-[160px] truncate">
+          {subtask.notes ?? "—"}
+        </td>
+
+        {/* Actions */}
+        <td className="px-4 py-2" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center gap-2">
+            {/* 1 - Edit */}
+            <button
+              onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+              className="group relative flex items-center justify-center w-6 h-6 rounded-md hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors"
+              title="Edit subtask [1]"
+            >
+              <Pencil size={12} className="text-slate-300 dark:text-zinc-600 group-hover:text-indigo-500 transition-colors" />
+              <span className={`absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full border text-[8px] font-bold flex items-center justify-center leading-none transition-colors ${
+                hovered
+                  ? "bg-slate-500 text-white border-slate-500"
+                  : "bg-slate-100 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-400 dark:text-zinc-500"
+              }`}>1</span>
+            </button>
+
+            {/* 2 - Delete */}
+            <button
+              onClick={(e) => { e.stopPropagation(); handleDelete(); }}
+              disabled={deleting}
+              className="group relative flex items-center justify-center w-6 h-6 rounded-md hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors disabled:opacity-50"
+              title="Delete subtask [2]"
+            >
+              <Trash2 size={12} className="text-slate-300 dark:text-zinc-600 group-hover:text-red-500 transition-colors" />
+              <span className={`absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full border text-[8px] font-bold flex items-center justify-center leading-none transition-colors ${
+                hovered
+                  ? "bg-red-500 text-white border-red-500"
+                  : "bg-slate-100 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-400 dark:text-zinc-500"
+              }`}>2</span>
+            </button>
+          </div>
+        </td>
+      </tr>
+
+      {/* Hover Tooltip */}
+      {hovered && typeof window !== "undefined" && createPortal(
+        <div
+          style={{
+            position: "fixed",
+            left: tooltipPos.x + 16,
+            top: tooltipPos.y - 10,
+            zIndex: 9999,
+            pointerEvents: "none",
+            transform: tooltipPos.x > window.innerWidth - 260 ? "translateX(-110%)" : undefined,
+          }}
+          className="w-56 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl shadow-xl shadow-slate-200/60 dark:shadow-black/40 p-3 space-y-2"
+        >
+          {/* Header */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1 mb-0.5">
+                <span className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest font-semibold">Subtask {index + 1}</span>
+              </div>
+              <p className="text-[11px] font-bold text-slate-800 dark:text-zinc-100 truncate">{subtask.docType}</p>
+            </div>
+            <StatusBadge status={subtask.status} />
+          </div>
+
+          {/* Category */}
+          <div className="rounded-lg bg-slate-50 dark:bg-zinc-800 border border-slate-100 dark:border-zinc-700 px-2 py-1.5">
+            <p className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide mb-0.5">Category</p>
+            <CategoryBadge category={subtask.taskCategory} />
+          </div>
+
+          {/* Notes */}
+          {subtask.notes && (
+            <div className="px-2 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30">
+              <p className="text-[9px] text-amber-500 dark:text-amber-400 uppercase tracking-wide font-semibold mb-0.5">Note</p>
+              <p className="text-[10px] text-amber-700 dark:text-amber-300 leading-tight line-clamp-2">{subtask.notes}</p>
+            </div>
+          )}
+
+          {/* Keyboard hint */}
+          <div className="flex items-center justify-center gap-2 pt-0.5">
+            {[
+              { key: "1", label: "Edit",   color: "bg-slate-500" },
+              { key: "2", label: "Delete", color: "bg-red-500"   },
+            ].map(k => (
+              <div key={k.key} className="flex items-center gap-1">
+                <span className={`w-4 h-4 rounded ${k.color} text-white text-[9px] font-bold flex items-center justify-center`}>{k.key}</span>
+                <span className="text-[9px] text-slate-300 dark:text-zinc-600">{k.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
   );
 }
 
