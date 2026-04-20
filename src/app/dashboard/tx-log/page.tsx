@@ -663,26 +663,29 @@ function SubtaskRow({ subtask, index, txId, docTypes, parentCategory, onUpdated,
   const [deleting,  setDeleting]  = useState(false);
   const [hovered,   setHovered]   = useState(false);
 
-  const handleSave = async () => {
-    setSaving(true);
-    const res = await fetch("/api/kpi/transactions", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: txId,
-        subtaskAction: "ADD",
-        subtask: {
-          docType:      stDocType,
-          number:       stNumber ? Number(stNumber) : undefined,
-          notes:        stNotes.trim() || undefined,
-          status:       stStatus,
-          taskCategory: parentCategory,  // ADD THIS
-        },
-      }),
-    });
-    setSaving(false);
-    if (res.ok) { const d = await res.json(); onUpdated(d.transaction); setEditing(false); }
-  };
+const handleSave = async () => {
+  setSaving(true);
+  const selectedDt = docTypes.find(dt => dt.name === stDocType);
+  const subtaskCategory = selectedDt?.taskCategory ?? parentCategory;  // ← own category
+
+  const res = await fetch("/api/kpi/transactions", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      id: txId,
+      subtaskAction: "ADD",
+      subtask: {
+        docType:      stDocType,
+        number:       stNumber ? Number(stNumber) : undefined,
+        notes:        stNotes.trim() || undefined,
+        status:       stStatus,
+        taskCategory: subtaskCategory,  // ← fix here too
+      },
+    }),
+  });
+  setSaving(false);
+  if (res.ok) { const d = await res.json(); onUpdated(d.transaction); setEditing(false); }
+};
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -772,27 +775,33 @@ function AddSubtaskInlineRow({ docTypes, txId, parentCategory, onAdded, onCancel
   const [err,       setErr]       = useState("");
 
   const handleSubmit = async () => {
-    setErr("");
-    if (!stDocType) { setErr("Select a task type"); return; }
-    setSaving(true);
-    const res = await fetch("/api/kpi/transactions", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: txId,
-        subtaskAction: "ADD",
-        subtask: {
-          docType: stDocType,
-          number:  stNumber ? Number(stNumber) : undefined,
-          notes:   stNotes.trim() || undefined,
-          status:  stStatus,
-        },
-      }),
-    });
-    setSaving(false);
-    if (res.ok) { const d = await res.json(); onAdded(d.transaction); }
-    else setErr("Failed to add");
-  };
+  setErr("");
+  if (!stDocType) { setErr("Select a task type"); return; }
+  setSaving(true);
+
+  // Look up the selected docType's own category
+  const selectedDt = docTypes.find(dt => dt.name === stDocType);
+  const subtaskCategory = selectedDt?.taskCategory ?? parentCategory;
+
+  const res = await fetch("/api/kpi/transactions", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      id: txId,
+      subtaskAction: "ADD",
+      subtask: {
+        docType:      stDocType,
+        number:       stNumber ? Number(stNumber) : undefined,
+        notes:        stNotes.trim() || undefined,
+        status:       stStatus,
+        taskCategory: subtaskCategory,  // ← uses the subtask docType's own category
+      },
+    }),
+  });
+  setSaving(false);
+  if (res.ok) { const d = await res.json(); onAdded(d.transaction); }
+  else setErr("Failed to add");
+};
 
   return (
     <div className="flex flex-wrap items-end gap-2 p-2.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-zinc-900">
