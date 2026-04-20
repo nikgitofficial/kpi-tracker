@@ -320,24 +320,34 @@ interface ProductivityTimerProps {
   bioBreakSeconds: number; 
 }
 
-function ProductivityTimer({ agentId, date, onProductivityChange,bioBreakSeconds }: ProductivityTimerProps) {
-  const [timer, setTimer] = useState<StandaloneTimer>({ running: false, paused: false, startEpoch: null, accSeconds: 0 });
+function ProductivityTimer({ agentId, date, onProductivityChange, bioBreakSeconds }: ProductivityTimerProps) {
+  const [timer, setTimer] = useState<StandaloneTimer>({
+    running: false, paused: false, startEpoch: null, accSeconds: 0,
+  });
   const [pendingEnd, setPendingEnd] = useState<EndTimerConfirmation | null>(null);
   const [display, setDisplay] = useState("00:00:00");
   const [timerTxId, setTimerTxId] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const saveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const initialized = useRef(false);
+  const timerRef = useRef(timer);
+  const timerTxIdRef = useRef<string | null>(null);
+
+  useEffect(() => { timerRef.current = timer; }, [timer]);
+  useEffect(() => { timerTxIdRef.current = timerTxId; }, [timerTxId]);
 
   const getTotalSeconds = useCallback((t: StandaloneTimer) => {
-    if (t.paused || (!t.running && t.startEpoch === null)) return t.accSeconds;
     if (t.running && !t.paused && t.startEpoch) {
       return t.accSeconds + Math.floor((Date.now() - t.startEpoch) / 1000);
     }
     return t.accSeconds;
   }, []);
 
-  const persistToDB = useCallback((seconds: number, txId: string | null, startEpoch?: number | null, paused?: boolean) => {
+  const persistToDB = useCallback((
+    seconds: number,
+    txId: string | null,
+    startEpoch?: number | null,
+    paused?: boolean,
+  ) => {
     if (!txId) return;
     if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
     saveDebounceRef.current = setTimeout(() => {
@@ -350,12 +360,63 @@ function ProductivityTimer({ agentId, date, onProductivityChange,bioBreakSeconds
           timerStartEpoch: startEpoch ?? null,
           timerPaused: paused ?? false,
         }),
-      }).catch(() => {/* silent */});
+      }).catch(() => {});
     }, 2000);
   }, []);
 
+  const saveImmediately = useCallback(async (
+    txId: string,
+    seconds: number,
+    startEpoch: number | null,
+    paused: boolean,
+  ) => {
+    if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
+    await fetch("/api/kpi/transactions", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: txId,
+        productiveSeconds: seconds,
+        timerStartEpoch: startEpoch,
+        timerPaused: paused,
+      }),
+    }).catch(() => {});
+  }, []);
+
+  const flushBeacon = useCallback(() => {
+    const t = timerRef.current;
+    const txId = timerTxIdRef.current;
+    if (!txId || !t.running || t.paused) return;
+    const total = getTotalSeconds(t);
+    if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
+    navigator.sendBeacon(
+      "/api/kpi/timer-beacon",
+      new Blob(
+        [JSON.stringify({
+          id: txId,
+          productiveSeconds: total,
+          timerStartEpoch: t.startEpoch,
+          timerPaused: false,
+        })],
+        { type: "application/json" }
+      )
+    );
+  }, [getTotalSeconds]);
+
   useEffect(() => {
-    initialized.current = false;
+    window.addEventListener("beforeunload", flushBeacon);
+    return () => window.removeEventListener("beforeunload", flushBeacon);
+  }, [flushBeacon]);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "hidden") flushBeacon();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [flushBeacon]);
+
+  useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
 
     fetch(`/api/kpi/transactions?date=${date}&agentId=${agentId}`)
@@ -364,56 +425,55 @@ function ProductivityTimer({ agentId, date, onProductivityChange,bioBreakSeconds
         const timerRecord = (data.transactions ?? []).find(
           (t: Transaction) => t.docType === "__PROD_TIMER__"
         );
-        if (timerRecord) {
-          const secs = timerRecord.productiveSeconds ?? 0;
-          const savedStartEpoch = timerRecord.timerStartEpoch ?? null;
-          const savedPaused = timerRecord.timerPaused ?? false;
-          setTimerTxId(timerRecord._id);
-
-          if (savedStartEpoch) {
-            const elapsed = Math.floor((Date.now() - savedStartEpoch) / 1000);
-            const totalSecs = secs + elapsed;
-            const resumed: StandaloneTimer = {
-              running: true,
-              paused: false,
-              startEpoch: savedStartEpoch,
-              accSeconds: secs,
-            };
-            setTimer(resumed);
-            setDisplay(formatTat(totalSecs));
-            onProductivityChange(totalSecs);
-          } else if (savedPaused && secs > 0) {
-            const paused: StandaloneTimer = {
-              running: true,
-              paused: true,
-              startEpoch: null,
-              accSeconds: secs,
-            };
-            setTimer(paused);
-            setDisplay(formatTat(secs));
-            onProductivityChange(secs);
-          } else {
-            const loaded: StandaloneTimer = {
-              running: false,
-              paused: false,
-              startEpoch: null,
-              accSeconds: secs,
-            };
-            setTimer(loaded);
-            setDisplay(formatTat(secs));
-            onProductivityChange(secs);
-          }
-        } else {
+        if (!timerRecord) {
           setTimerTxId(null);
           setTimer({ running: false, paused: false, startEpoch: null, accSeconds: 0 });
           setDisplay("00:00:00");
           onProductivityChange(0);
+          return;
         }
-        initialized.current = true;
+
+        setTimerTxId(timerRecord._id);
+        const secs = timerRecord.productiveSeconds ?? 0;
+        const savedEpoch = timerRecord.timerStartEpoch ?? null;
+        const savedPaused = timerRecord.timerPaused ?? false;
+
+        if (savedEpoch && !savedPaused) {
+          const totalSecs = secs + Math.floor((Date.now() - savedEpoch) / 1000);
+          setTimer({ running: true, paused: false, startEpoch: savedEpoch, accSeconds: secs });
+          setDisplay(formatTat(totalSecs));
+          onProductivityChange(totalSecs);
+        } else if (savedPaused && secs > 0) {
+          setTimer({ running: true, paused: true, startEpoch: null, accSeconds: secs });
+          setDisplay(formatTat(secs));
+          onProductivityChange(secs);
+        } else {
+          setTimer({ running: false, paused: false, startEpoch: null, accSeconds: secs });
+          setDisplay(formatTat(secs));
+          onProductivityChange(secs);
+        }
       })
-      .catch(() => { initialized.current = true; });
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId, date]);
+
+  useEffect(() => {
+    if (timer.running && !timer.paused) {
+      intervalRef.current = setInterval(() => {
+        const total = getTotalSeconds(timer);
+        setDisplay(formatTat(total));
+        onProductivityChange(total);
+        persistToDB(total, timerTxId, timer.startEpoch, false);
+      }, 1000);
+    } else {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      const total = getTotalSeconds(timer);
+      setDisplay(formatTat(total));
+      onProductivityChange(total);
+    }
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timer, timerTxId]);
 
   const ensureTimerRecord = useCallback(async (): Promise<string | null> => {
     if (timerTxId) return timerTxId;
@@ -441,79 +501,58 @@ function ProductivityTimer({ agentId, date, onProductivityChange,bioBreakSeconds
     return null;
   }, [timerTxId, agentId, date]);
 
-  useEffect(() => {
-    if (timer.running && !timer.paused) {
-      intervalRef.current = setInterval(() => {
-        const total = getTotalSeconds(timer);
-        setDisplay(formatTat(total));
-        onProductivityChange(total);
-        persistToDB(total, timerTxId);
-      }, 1000);
-    } else {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      const total = getTotalSeconds(timer);
-      setDisplay(formatTat(total));
-      onProductivityChange(total);
-    }
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timer, timerTxId]);
-
   const handleStart = async () => {
     const txId = await ensureTimerRecord();
     const epoch = Date.now();
     setTimer({ running: true, paused: false, startEpoch: epoch, accSeconds: 0 });
-    if (txId) {
-      fetch("/api/kpi/transactions", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: txId, productiveSeconds: 0, timerStartEpoch: epoch, timerPaused: false }),
-      }).catch(() => {});
-    }
+    if (txId) await saveImmediately(txId, 0, epoch, false);
   };
 
-  const handlePause = () => {
-    setTimer(prev => {
-      const acc = getTotalSeconds(prev);
-      persistToDB(acc, timerTxId, null, true);
-      return { ...prev, paused: true, accSeconds: acc };
-    });
+  const handlePause = async () => {
+    if (!timerTxId) return;
+    const acc = getTotalSeconds(timer);
+    setTimer({ running: true, paused: true, startEpoch: null, accSeconds: acc });
+    await saveImmediately(timerTxId, acc, null, true);
   };
 
-  const handleResume = () => {
-    persistToDB(getTotalSeconds(timer), timerTxId, null, false);
-    setTimer(prev => ({ ...prev, paused: false, startEpoch: Date.now() }));
+  const handleResume = async () => {
+    if (!timerTxId) return;
+    const epoch = Date.now();
+    setTimer(prev => ({ ...prev, paused: false, startEpoch: epoch }));
+    await saveImmediately(timerTxId, timer.accSeconds, epoch, false);
   };
 
-const handleEnd = () => {
-  const total = getTotalSeconds(timer);
-  const net = Math.max(0, total - bioBreakSeconds);
-  // Show confirmation modal instead of ending immediately
-  setPendingEnd({
-    productiveSeconds: total,
-    bioBreakSeconds,
-    netSeconds: net,
-  });
-};
+  const handleEnd = () => {
+    const total = getTotalSeconds(timer);
+    const net = Math.max(0, total - bioBreakSeconds);
+    setPendingEnd({ productiveSeconds: total, bioBreakSeconds, netSeconds: net });
+  };
 
-const confirmEnd = () => {
-  if (!pendingEnd) return;
-  onProductivityChange(pendingEnd.netSeconds);
-  if (intervalRef.current) clearInterval(intervalRef.current);
-  setTimer({ running: false, paused: false, startEpoch: null, accSeconds: pendingEnd.netSeconds });
-  setDisplay(formatTat(pendingEnd.netSeconds));
-  persistToDB(pendingEnd.netSeconds, timerTxId, null, false);
-  setPendingEnd(null);
-};
+  const confirmEnd = async () => {
+    if (!pendingEnd || !timerTxId) return;
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    setTimer({ running: false, paused: false, startEpoch: null, accSeconds: pendingEnd.netSeconds });
+    setDisplay(formatTat(pendingEnd.netSeconds));
+    onProductivityChange(pendingEnd.netSeconds);
+    await saveImmediately(timerTxId, pendingEnd.netSeconds, null, false);
+    setPendingEnd(null);
+  };
 
-const cancelEnd = () => setPendingEnd(null);
+  const cancelEnd = () => setPendingEnd(null);
 
-  const handleReset = () => {
+  const handleReset = async () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     setTimer({ running: false, paused: false, startEpoch: null, accSeconds: 0 });
     onProductivityChange(0);
     setDisplay("00:00:00");
-    persistToDB(0, timerTxId, null, false);
+    if (timerTxId) await saveImmediately(timerTxId, 0, null, false);
+  };
+
+  const handleContinue = async () => {
+    if (!timerTxId) return;
+    const epoch = Date.now();
+    setTimer(prev => ({ ...prev, running: true, paused: false, startEpoch: epoch }));
+    await saveImmediately(timerTxId, timer.accSeconds, epoch, false);
   };
 
   const isIdle    = !timer.running && !timer.paused && timer.accSeconds === 0;
@@ -577,39 +616,21 @@ const cancelEnd = () => setPendingEnd(null);
             </>
           )}
           {isDone && (
-  <>
-    <button
-      onClick={handleReset}
-      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-zinc-400 text-xs font-semibold hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors"
-    >
-      <Plus size={12} className="rotate-45" /> Reset
-    </button>
-    <button
-      onClick={() => {
-        const epoch = Date.now();
-        setTimer(prev => ({ ...prev, running: true, paused: false, startEpoch: epoch }));
-        if (timerTxId) {
-          fetch("/api/kpi/transactions", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: timerTxId, timerStartEpoch: epoch, timerPaused: false }),
-          }).catch(() => {});
-        }
-      }}
-      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 text-xs font-semibold hover:bg-emerald-100 transition-colors"
-    >
-      <Play size={12} /> Continue
-    </button>
-  </>
-)}
+            <>
+              <button onClick={handleReset} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-zinc-400 text-xs font-semibold hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors">
+                <Plus size={12} className="rotate-45" /> Reset
+              </button>
+              <button onClick={handleContinue} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 text-xs font-semibold hover:bg-emerald-100 transition-colors">
+                <Play size={12} /> Continue
+              </button>
+            </>
+          )}
         </div>
-    </div>
+      </div>
 
-      {/* ── End Timer Confirmation Modal ── */}
       {pendingEnd && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 backdrop-blur-sm">
           <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 w-[360px] shadow-2xl">
-            {/* Header */}
             <div className="flex items-center gap-3 mb-5">
               <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center flex-shrink-0">
                 <Timer size={15} className="text-indigo-500" />
@@ -619,7 +640,6 @@ const cancelEnd = () => setPendingEnd(null);
                 <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">Bio break time will be deducted</p>
               </div>
             </div>
-            {/* Breakdown */}
             <div className="space-y-2 mb-5">
               <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200">
                 <span className="text-xs text-emerald-700 font-medium">Total Timer</span>
@@ -637,18 +657,11 @@ const cancelEnd = () => setPendingEnd(null);
                 <span className="text-sm font-mono font-bold text-indigo-600">{formatTat(pendingEnd.netSeconds)}</span>
               </div>
             </div>
-            {/* Buttons */}
             <div className="flex gap-2">
-              <button
-                onClick={cancelEnd}
-                className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 text-sm font-medium hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors"
-              >
+              <button onClick={cancelEnd} className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 text-sm font-medium hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors">
                 Cancel
               </button>
-              <button
-                onClick={confirmEnd}
-                className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors"
-              >
+              <button onClick={confirmEnd} className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors">
                 Confirm
               </button>
             </div>
