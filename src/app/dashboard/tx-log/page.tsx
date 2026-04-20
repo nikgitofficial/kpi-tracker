@@ -684,23 +684,24 @@ function SubtaskRow({ subtask, index, txId, docTypes, parentCategory, onUpdated,
   const [deleting,  setDeleting]  = useState(false);
   const [hovered,   setHovered]   = useState(false);
 
-const handleSave = async () => {
+  const handleSave = async () => {
   setSaving(true);
   const selectedDt = docTypes.find(dt => dt.name === stDocType);
-  const subtaskCategory = selectedDt?.taskCategory ?? parentCategory;  // ← own category
+  const subtaskCategory = selectedDt?.taskCategory ?? parentCategory;
 
   const res = await fetch("/api/kpi/transactions", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       id: txId,
-      subtaskAction: "ADD",
+      subtaskAction: "UPDATE",      // ← change "ADD" to "UPDATE"
+      subtaskId: subtask._id,       // ← add the subtask id
       subtask: {
         docType:      stDocType,
         number:       stNumber ? Number(stNumber) : undefined,
         notes:        stNotes.trim() || undefined,
         status:       stStatus,
-        taskCategory: subtaskCategory,  // ← fix here too
+        taskCategory: subtaskCategory,
       },
     }),
   });
