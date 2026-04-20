@@ -4,18 +4,33 @@ import { useState, useEffect, useCallback } from "react";
 import {
   BarChart2, CheckCircle2, AlertTriangle, Users, TrendingUp,
   TrendingDown, Award, Zap, Target, Clock, ChevronUp, ChevronDown,
-  Minus, Activity, FileText, FileSpreadsheet,
+  Activity, FileText, FileSpreadsheet, PauseCircle,
 } from "lucide-react";
 
 /* ─── Types ─── */
 interface Summary {
-  totalTx: number; done: number; pending: number; noDoc: number;
-  escalated: number; avgTat: number; completionRate: number;
+  totalTx: number;
+  done: number;
+  pending: number;
+  hold: number;
+  escalated: number;
+  avgTat: number;
+  completionRate: number;
+  totalProductiveSeconds: number;
 }
+
 interface AgentStat {
-  agentId: string; name: string; total: number; done: number;
-  pending: number; noDoc: number; escalated: number; avgTat: number; rate: number;
+  agentId: string;
+  name: string;
+  total: number;
+  done: number;
+  pending: number;
+  hold: number;
+  escalated: number;
+  avgTat: number;
+  rate: number;
 }
+
 interface DocTypeStat { type: string; count: number; avgTat: number }
 interface DailyPoint  { date: string; count: number }
 interface AgentDailyRate { date: string; rate: number | null }
@@ -37,7 +52,7 @@ function fmtDate(s: string) {
   return new Date(s + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-type SortKey = "total" | "done" | "pending" | "escalated" | "avgTat" | "rate";
+type SortKey = "total" | "done" | "pending" | "hold" | "escalated" | "avgTat" | "rate";
 
 /* ─── Streak alert helper ─── */
 interface StreakAlert extends AgentStat {
@@ -94,17 +109,18 @@ async function exportToExcel(
 
   if (summary) {
     const summaryData = [
-      ["Date Range",        `${from} to ${to}`],
-      ["Total TX",          summary.totalTx],
-      ["Completion",        summary.done],
-      ["Pending",           summary.pending],
-      ["No Doc",            summary.noDoc],
-      ["Escalation",        summary.escalated],
-      ["Avg TAT",           formatTat(summary.avgTat)],
-      ["Completion Rate",   `${summary.completionRate}%`],
+      ["Date Range",              `${from} to ${to}`],
+      ["Total TX",                summary.totalTx],
+      ["Completion",              summary.done],
+      ["Pending",                 summary.pending],
+      ["Hold",                    summary.hold],
+      ["Escalation",              summary.escalated],
+      ["Avg TAT",                 formatTat(summary.avgTat)],
+      ["Completion Rate",         `${summary.completionRate}%`],
+      ["Total Productive Time",   formatTat(summary.totalProductiveSeconds)],
     ];
     const ws = XLSX.utils.aoa_to_sheet(summaryData);
-    ws["!cols"] = [{ wch: 18 }, { wch: 20 }];
+    ws["!cols"] = [{ wch: 22 }, { wch: 20 }];
     XLSX.utils.book_append_sheet(wb, ws, "Summary");
   }
 
@@ -115,7 +131,7 @@ async function exportToExcel(
     "Total TX":    a.total,
     "Completion":  a.done,
     "Pending":     a.pending,
-    "No Doc":      a.noDoc,
+    "Hold":        a.hold,
     "Escalation":  a.escalated,
     "Avg TAT":     formatTat(a.avgTat),
     "Rate %":      +a.rate,
@@ -176,22 +192,23 @@ async function exportToPdf(
 
   if (summary) {
     const kpis = [
-      { label: "TOTAL TX",    value: String(summary.totalTx),          rgb: [180,180,220] as [number,number,number] },
-      { label: "COMPLETION",  value: String(summary.done),             rgb: [80,200,120]  as [number,number,number] },
-      { label: "PENDING",     value: String(summary.pending),          rgb: [220,170,60]  as [number,number,number] },
-      { label: "ESCALATION",  value: String(summary.escalated),        rgb: [160,120,220] as [number,number,number] },
-      { label: "AVG TAT",     value: formatTat(summary.avgTat),        rgb: [120,160,255] as [number,number,number] },
-      { label: "COMP RATE",   value: `${summary.completionRate}%`,     rgb: [80,200,120]  as [number,number,number] },
+      { label: "TOTAL TX",    value: String(summary.totalTx),                    rgb: [180,180,220] as [number,number,number] },
+      { label: "COMPLETION",  value: String(summary.done),                        rgb: [80,200,120]  as [number,number,number] },
+      { label: "PENDING",     value: String(summary.pending),                     rgb: [220,170,60]  as [number,number,number] },
+      { label: "HOLD",        value: String(summary.hold),                        rgb: [100,160,220] as [number,number,number] },
+      { label: "ESCALATION",  value: String(summary.escalated),                   rgb: [160,120,220] as [number,number,number] },
+      { label: "COMP RATE",   value: `${summary.completionRate}%`,                rgb: [80,200,120]  as [number,number,number] },
+      { label: "PROD TIME",   value: formatTat(summary.totalProductiveSeconds),   rgb: [120,160,255] as [number,number,number] },
     ];
-    const bw = 42, bh = 14, sx = 10, sy = 26;
+    const bw = 36, bh = 14, sx = 10, sy = 26;
     kpis.forEach((k, i) => {
-      const x = sx + i * (bw + 3);
+      const x = sx + i * (bw + 2);
       doc.setFillColor(35, 35, 58);
       doc.roundedRect(x, sy, bw, bh, 2, 2, "F");
       doc.setTextColor(...k.rgb);
-      doc.setFontSize(11); doc.setFont("helvetica", "bold");
+      doc.setFontSize(10); doc.setFont("helvetica", "bold");
       doc.text(k.value, x + bw / 2, sy + 7, { align: "center" });
-      doc.setFontSize(6); doc.setFont("helvetica", "normal");
+      doc.setFontSize(5.5); doc.setFont("helvetica", "normal");
       doc.setTextColor(100, 100, 150);
       doc.text(k.label, x + bw / 2, sy + 12, { align: "center" });
     });
@@ -270,27 +287,27 @@ async function exportToPdf(
   doc.text(`${formattedFrom} — ${formattedTo}  ·  ${agentStats.length} agents`, 287, 10, { align: "right" });
 
   const agentBody = byRate.map((a, i) => [
-    i + 1, a.name, a.total, a.done, a.pending, a.noDoc, a.escalated,
+    i + 1, a.name, a.total, a.done, a.pending, a.hold, a.escalated,
     formatTat(a.avgTat), `${a.rate}%`,
   ]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (doc as any).autoTable({
     startY: 18,
-    head: [["Rank", "Agent", "Total", "Completion", "Pending", "No Doc", "Escalation", "Avg TAT", "Rate"]],
+    head: [["Rank", "Agent", "Total", "Completion", "Pending", "Hold", "Escalation", "Avg TAT", "Rate"]],
     body: agentBody,
     styles: { fontSize: 8, cellPadding: 2.5, textColor: [190, 190, 210], fillColor: [22, 22, 38], lineColor: [45, 45, 70], lineWidth: 0.2 },
     headStyles: { fillColor: [35, 35, 60], textColor: [130, 130, 190], fontStyle: "bold", fontSize: 7 },
     alternateRowStyles: { fillColor: [28, 28, 48] },
     columnStyles: {
       0: { cellWidth: 10, halign: "center" },
-      1: { cellWidth: 50 },
+      1: { cellWidth: 46 },
       2: { cellWidth: 18, halign: "center" },
       3: { cellWidth: 22, halign: "center", textColor: [80, 200, 120] },
       4: { cellWidth: 18, halign: "center", textColor: [220, 170, 60] },
-      5: { cellWidth: 18, halign: "center", textColor: [220, 80, 80] },
+      5: { cellWidth: 16, halign: "center", textColor: [100, 160, 220] },
       6: { cellWidth: 22, halign: "center", textColor: [160, 120, 220] },
-      7: { cellWidth: 30, halign: "center", textColor: [120, 160, 255], fontStyle: "bold" },
+      7: { cellWidth: 28, halign: "center", textColor: [120, 160, 255], fontStyle: "bold" },
       8: { cellWidth: 22, halign: "center" },
     },
     didDrawCell: (data: any) => {
@@ -312,9 +329,6 @@ async function exportToPdf(
   doc.setTextColor(160, 160, 210);
   doc.setFontSize(10); doc.setFont("helvetica", "bold");
   doc.text("Task Type Performance", 10, 10);
-  doc.setFontSize(8); doc.setFont("helvetica", "normal");
-  doc.setTextColor(100, 100, 150);
-  doc.text(`${formattedFrom} — ${formattedTo}`, 287, 10, { align: "right" });
 
   const docTotal = docTypeStats.reduce((s, d) => s + d.count, 0);
   const docBody = [...docTypeStats].sort((a, b) => b.count - a.count).map((d, i) => [
@@ -404,11 +418,7 @@ function SortTh({ label, col, sort, onSort }: { label: string; col: SortKey; sor
 
 /* ─── Streak Alert Panel ─── */
 function StreakAlertPanel({
-  alerts,
-  minStreak,
-  rateThreshold,
-  onChangeMinStreak,
-  onChangeRateThreshold,
+  alerts, minStreak, rateThreshold, onChangeMinStreak, onChangeRateThreshold,
 }: {
   alerts: StreakAlert[];
   minStreak: number;
@@ -426,10 +436,7 @@ function StreakAlertPanel({
           {alerts.length} agent{alerts.length !== 1 ? "s" : ""} flagged for consecutive low performance
         </span>
       </div>
-      <button
-        onClick={() => setDismissed(false)}
-        className="text-xs text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-semibold transition-colors"
-      >
+      <button onClick={() => setDismissed(false)} className="text-xs text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 font-semibold transition-colors">
         Show alerts
       </button>
     </div>
@@ -437,68 +444,47 @@ function StreakAlertPanel({
 
   return (
     <div className="mb-6 bg-white dark:bg-zinc-900 border border-red-200 dark:border-red-800 rounded-2xl p-5">
-      {/* Header row */}
       <div className="flex items-start justify-between mb-4 gap-3 flex-wrap">
         <div className="flex items-center gap-2">
           <AlertTriangle size={14} className="text-red-500 dark:text-red-400 flex-shrink-0" />
           <h2 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">Consecutive low-performance alerts</h2>
-          <span className="px-2 py-0.5 rounded-full bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-500 dark:text-red-400 text-[10px] font-bold">
-            {alerts.length}
-          </span>
+          <span className="px-2 py-0.5 rounded-full bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-500 dark:text-red-400 text-[10px] font-bold">{alerts.length}</span>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] text-slate-400 dark:text-zinc-500">Flag after</span>
-            <select
-              value={minStreak}
-              onChange={(e) => onChangeMinStreak(Number(e.target.value))}
-              className="bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg px-2 py-1 text-xs text-slate-700 dark:text-zinc-200 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 transition-colors"
-            >
+            <select value={minStreak} onChange={(e) => onChangeMinStreak(Number(e.target.value))}
+              className="bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg px-2 py-1 text-xs text-slate-700 dark:text-zinc-200 focus:outline-none focus:border-indigo-400 transition-colors">
               <option value={3}>3 days</option>
               <option value={4}>4 days</option>
             </select>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] text-slate-400 dark:text-zinc-500">below</span>
-            <select
-              value={rateThreshold}
-              onChange={(e) => onChangeRateThreshold(Number(e.target.value))}
-              className="bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg px-2 py-1 text-xs text-slate-700 dark:text-zinc-200 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 transition-colors"
-            >
+            <select value={rateThreshold} onChange={(e) => onChangeRateThreshold(Number(e.target.value))}
+              className="bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg px-2 py-1 text-xs text-slate-700 dark:text-zinc-200 focus:outline-none focus:border-indigo-400 transition-colors">
               <option value={50}>50%</option>
               <option value={60}>60%</option>
               <option value={70}>70%</option>
               <option value={80}>80%</option>
             </select>
           </div>
-          <button
-            onClick={() => setDismissed(true)}
-            className="px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-400 dark:text-zinc-500 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-zinc-700 transition-colors"
-          >
+          <button onClick={() => setDismissed(true)} className="px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-400 dark:text-zinc-500 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-zinc-700 transition-colors">
             Dismiss
           </button>
         </div>
       </div>
 
       {alerts.length === 0 && (
-        <p className="text-xs text-slate-400 dark:text-zinc-500 py-4 text-center">
-          No agents flagged for consecutive low performance in this date range.
-        </p>
+        <p className="text-xs text-slate-400 dark:text-zinc-500 py-4 text-center">No agents flagged for consecutive low performance in this date range.</p>
       )}
 
       <div className="space-y-2.5">
         {alerts.map((a) => {
           const isCritical = a.maxStreak >= 4;
           return (
-            <div
-              key={a.agentId}
-              className={`flex items-start gap-3 p-3.5 rounded-xl border transition-colors ${
-                isCritical ? "border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30" : "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30"
-              }`}
-            >
-              <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${
-                isCritical ? "bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400" : "bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400"
-              }`}>
+            <div key={a.agentId} className={`flex items-start gap-3 p-3.5 rounded-xl border transition-colors ${isCritical ? "border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30" : "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30"}`}>
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${isCritical ? "bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400" : "bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400"}`}>
                 {a.name.slice(0, 2).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
@@ -508,42 +494,15 @@ function StreakAlertPanel({
                 </p>
                 <div className="flex gap-1 mt-2 flex-wrap">
                   {a.days.map((d) => (
-                    <div
-                      key={d.date}
-                      title={`${fmtDate(d.date)}: ${d.rate !== null ? `${d.rate}%` : "no data"}`}
-                      className={`w-3 h-3 rounded-sm transition-colors ${
-                        d.rate === null ? "bg-slate-200 dark:bg-zinc-700"
-                          : d.rate < rateThreshold ? "bg-red-400"
-                          : "bg-green-400"
-                      }`}
-                    />
+                    <div key={d.date} title={`${fmtDate(d.date)}: ${d.rate !== null ? `${d.rate}%` : "no data"}`}
+                      className={`w-3 h-3 rounded-sm transition-colors ${d.rate === null ? "bg-slate-200 dark:bg-zinc-700" : d.rate < rateThreshold ? "bg-red-400" : "bg-green-400"}`} />
                   ))}
-                </div>
-                <div className="flex items-center gap-3 mt-1.5">
-                  <div className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-sm bg-red-400 inline-block" />
-                    <span className="text-[10px] text-slate-400 dark:text-zinc-500">Low</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-sm bg-green-400 inline-block" />
-                    <span className="text-[10px] text-slate-400 dark:text-zinc-500">OK</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-sm bg-slate-200 dark:bg-zinc-700 inline-block" />
-                    <span className="text-[10px] text-slate-400 dark:text-zinc-500">No data</span>
-                  </div>
                 </div>
               </div>
               <div className="flex-shrink-0 text-right">
-                <p className={`text-2xl font-bold tabular-nums leading-none ${isCritical ? "text-red-500 dark:text-red-400" : "text-amber-500 dark:text-amber-400"}`}>
-                  {a.maxStreak}
-                </p>
+                <p className={`text-2xl font-bold tabular-nums leading-none ${isCritical ? "text-red-500 dark:text-red-400" : "text-amber-500 dark:text-amber-400"}`}>{a.maxStreak}</p>
                 <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">days</p>
-                {isCritical && (
-                  <span className="inline-block mt-1.5 px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-[9px] font-bold">
-                    CRITICAL
-                  </span>
-                )}
+                {isCritical && <span className="inline-block mt-1.5 px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-[9px] font-bold">CRITICAL</span>}
               </div>
             </div>
           );
@@ -566,8 +525,8 @@ export default function KpiAnalyticsPage() {
   const [sort, setSort]               = useState<[SortKey, "asc"|"desc"]>(["total", "desc"]);
   const [tab, setTab]                 = useState<"overview"|"agents"|"docs">("overview");
   const [exporting, setExporting]     = useState<"pdf"|"excel"|null>(null);
-  const [alertMinStreak, setAlertMinStreak]       = useState(3);
-  const [alertRateThreshold, setAlertRateThreshold] = useState(60);
+  const [alertMinStreak, setAlertMinStreak]           = useState(3);
+  const [alertRateThreshold, setAlertRateThreshold]   = useState(60);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -592,13 +551,11 @@ export default function KpiAnalyticsPage() {
     setSort(prev => prev[0] === col ? [col, prev[1] === "desc" ? "asc" : "desc"] : [col, "desc"]);
   };
 
-  const topAgent    = agentStats.length ? [...agentStats].sort((a, b) => b.rate - a.rate)[0] : null;
-  const lowAgent    = agentStats.length > 1
-    ? [...agentStats].sort((a, b) => a.rate - b.rate).find(a => a.agentId !== topAgent?.agentId) ?? null
-    : null;
-  const mostActive  = agentStats.length ? [...agentStats].sort((a, b) => b.total - a.total)[0] : null;
+  const topAgent     = agentStats.length ? [...agentStats].sort((a, b) => b.rate - a.rate)[0] : null;
+  const lowAgent     = agentStats.length > 1 ? [...agentStats].sort((a, b) => a.rate - b.rate).find(a => a.agentId !== topAgent?.agentId) ?? null : null;
+  const mostActive   = agentStats.length ? [...agentStats].sort((a, b) => b.total - a.total)[0] : null;
   const fastestAgent = agentStats.filter(a => a.avgTat > 0).sort((a, b) => a.avgTat - b.avgTat)[0] ?? null;
-  const topDoc      = docTypeStats.length ? [...docTypeStats].sort((a, b) => b.count - a.count)[0] : null;
+  const topDoc       = docTypeStats.length ? [...docTypeStats].sort((a, b) => b.count - a.count)[0] : null;
 
   const maxDaily = Math.max(...dailyTrend.map(d => d.count), 1);
   const maxAgent = Math.max(...agentStats.map(a => a.total), 1);
@@ -621,11 +578,8 @@ export default function KpiAnalyticsPage() {
     finally { setExporting(null); }
   };
 
-  // Pre-compute rate-based ranks once so all views use consistent ranking
   const agentsByRate = [...agentStats].sort((a, b) => b.rate - a.rate);
-  const getRateRank = (agentId: string) => agentsByRate.findIndex(x => x.agentId === agentId) + 1;
-
-  // Streak alerts
+  const getRateRank  = (agentId: string) => agentsByRate.findIndex(x => x.agentId === agentId) + 1;
   const streakAlerts = getStreakAlerts(agentStats, agentDailyRates, alertMinStreak, alertRateThreshold);
 
   return (
@@ -639,7 +593,7 @@ export default function KpiAnalyticsPage() {
             <h1 className="text-xl font-semibold text-slate-900 dark:text-zinc-100 tracking-tight">Performance Analytics</h1>
             <p className="text-slate-400 dark:text-zinc-500 text-sm mt-0.5">{formattedFrom} — {formattedTo}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
             <span className="text-xs text-slate-400 dark:text-zinc-500">FROM</span>
             <input type="date" value={from} onChange={e => setFrom(e.target.value)}
               className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm text-slate-700 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all" />
@@ -650,33 +604,14 @@ export default function KpiAnalyticsPage() {
               className="px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-500 dark:text-indigo-400 text-xs font-semibold hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors">
               Today
             </button>
-
             <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700 mx-1" />
-
-            <button
-              onClick={handleExcelExport}
-              disabled={!canExport || exporting === "excel"}
-              title={canExport ? "Export to Excel" : "No data to export"}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
-                canExport
-                  ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
-                  : "bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-300 dark:text-zinc-600 cursor-not-allowed"
-              }`}
-            >
+            <button onClick={handleExcelExport} disabled={!canExport || exporting === "excel"} title={canExport ? "Export to Excel" : "No data to export"}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${canExport ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100" : "bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-300 dark:text-zinc-600 cursor-not-allowed"}`}>
               <FileSpreadsheet size={13} />
               {exporting === "excel" ? "Exporting…" : "Excel"}
             </button>
-
-            <button
-              onClick={handlePdfExport}
-              disabled={!canExport || exporting === "pdf"}
-              title={canExport ? "Export to PDF" : "No data to export"}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
-                canExport
-                  ? "bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50"
-                  : "bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-300 dark:text-zinc-600 cursor-not-allowed"
-              }`}
-            >
+            <button onClick={handlePdfExport} disabled={!canExport || exporting === "pdf"} title={canExport ? "Export to PDF" : "No data to export"}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${canExport ? "bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-100" : "bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-300 dark:text-zinc-600 cursor-not-allowed"}`}>
               <FileText size={13} />
               {exporting === "pdf" ? "Exporting…" : "PDF"}
             </button>
@@ -687,28 +622,25 @@ export default function KpiAnalyticsPage() {
 
         {/* ── Streak Alert Panel ── */}
         {!loading && agentStats.length > 0 && (
-          <StreakAlertPanel
-            alerts={streakAlerts}
-            minStreak={alertMinStreak}
-            rateThreshold={alertRateThreshold}
-            onChangeMinStreak={setAlertMinStreak}
-            onChangeRateThreshold={setAlertRateThreshold}
-          />
+          <StreakAlertPanel alerts={streakAlerts} minStreak={alertMinStreak} rateThreshold={alertRateThreshold}
+            onChangeMinStreak={setAlertMinStreak} onChangeRateThreshold={setAlertRateThreshold} />
         )}
 
-               {/* ── KPI Summary Cards ── */}
+        {/* ── KPI Summary Cards — now includes Hold + Productive Time ── */}
         {summary && (
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-6">
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-6">
             {[
-              { label: "Total TX",    value: summary.totalTx,              color: "text-slate-700 dark:text-zinc-200",  sub: "transactions" },
-              { label: "Completion",  value: summary.done,                 color: "text-green-600 dark:text-green-400",  sub: "finished"     },
-              { label: "Pending",     value: summary.pending,              color: "text-amber-500 dark:text-amber-400",  sub: "in queue"     },
-              { label: "Escalation",  value: summary.escalated,            color: "text-purple-500 dark:text-purple-400", sub: "flagged"      },
-              { label: "Avg TAT",     value: formatTat(summary.avgTat),    color: "text-indigo-500 dark:text-indigo-400", sub: "per tx"       },
-              { label: "Rate",        value: `${summary.completionRate}%`, color: "text-green-600 dark:text-green-400",  sub: "completion"   },
+              { label: "Total TX",      value: summary.totalTx,                           color: "text-slate-700 dark:text-zinc-200",   sub: "transactions"   },
+              { label: "Completion",    value: summary.done,                              color: "text-green-600 dark:text-green-400",   sub: "finished"       },
+              { label: "Pending",       value: summary.pending,                           color: "text-amber-500 dark:text-amber-400",   sub: "in queue"       },
+              { label: "Hold",          value: summary.hold,                              color: "text-blue-500 dark:text-blue-400",     sub: "on hold"        },
+              { label: "Escalation",    value: summary.escalated,                         color: "text-purple-500 dark:text-purple-400", sub: "flagged"        },
+              { label: "Avg TAT",       value: formatTat(summary.avgTat),                 color: "text-indigo-500 dark:text-indigo-400", sub: "per tx"         },
+              { label: "Rate",          value: `${summary.completionRate}%`,              color: "text-green-600 dark:text-green-400",   sub: "completion"     },
+              { label: "Prod. Time",    value: formatTat(summary.totalProductiveSeconds), color: "text-cyan-600 dark:text-cyan-400",     sub: "total active"   },
             ].map(s => (
-              <div key={s.label} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl px-4 py-4 text-center hover:border-slate-300 dark:hover:border-zinc-600 transition-colors">
-                <p className={`text-xl font-bold tabular-nums ${s.color}`}>{s.value}</p>
+              <div key={s.label} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl px-3 py-4 text-center hover:border-slate-300 dark:hover:border-zinc-600 transition-colors">
+                <p className={`text-lg font-bold tabular-nums ${s.color}`}>{s.value}</p>
                 <p className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-wider mt-0.5">{s.label}</p>
                 <p className="text-[10px] text-slate-300 dark:text-zinc-600 mt-0.5">{s.sub}</p>
               </div>
@@ -783,9 +715,7 @@ export default function KpiAnalyticsPage() {
             const Icon = t.icon;
             return (
               <button key={t.key} onClick={() => setTab(t.key)}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
-                  tab === t.key ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"
-                }`}>
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${tab === t.key ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"}`}>
                 <Icon size={12} />{t.label}
               </button>
             );
@@ -860,6 +790,7 @@ export default function KpiAnalyticsPage() {
                         <div className="flex items-center gap-3 text-xs tabular-nums">
                           <span className="text-green-600 dark:text-green-400">{a.done}</span>
                           <span className="text-amber-500 dark:text-amber-400">{a.pending}</span>
+                          <span className="text-blue-500 dark:text-blue-400">{a.hold}</span>
                           <span className="text-slate-500 dark:text-zinc-400">{a.total}</span>
                         </div>
                       </div>
@@ -867,13 +798,14 @@ export default function KpiAnalyticsPage() {
                         <div className="h-full flex">
                           <div className="bg-green-400 rounded-l-full transition-all duration-700" style={{ width: `${(a.done / Math.max(a.total,1)) * (a.total/maxAgent) * 100}%` }} />
                           <div className="bg-amber-400 transition-all duration-700" style={{ width: `${(a.pending / Math.max(a.total,1)) * (a.total/maxAgent) * 100}%` }} />
+                          <div className="bg-blue-400 transition-all duration-700" style={{ width: `${(a.hold / Math.max(a.total,1)) * (a.total/maxAgent) * 100}%` }} />
                           <div className="bg-purple-400 transition-all duration-700" style={{ width: `${(a.escalated / Math.max(a.total,1)) * (a.total/maxAgent) * 100}%` }} />
                         </div>
                       </div>
                     </div>
                   ))}
-                  <div className="flex items-center gap-4 pt-1">
-                    {[["bg-green-400","Completion"],["bg-amber-400","Pending"],["bg-purple-400","Escalation"]].map(([c,l]) => (
+                  <div className="flex items-center gap-4 pt-1 flex-wrap">
+                    {[["bg-green-400","Completion"],["bg-amber-400","Pending"],["bg-blue-400","Hold"],["bg-purple-400","Escalation"]].map(([c,l]) => (
                       <div key={l} className="flex items-center gap-1.5">
                         <span className={`w-2 h-2 rounded-sm ${c}`} />
                         <span className="text-[10px] text-slate-400 dark:text-zinc-500">{l}</span>
@@ -939,7 +871,7 @@ export default function KpiAnalyticsPage() {
           </div>
         )}
 
-        {/* ── Agents Tab ── */}
+        {/* ── Agents Tab — now includes Hold column ── */}
         {tab === "agents" && (
           <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-200 dark:border-zinc-700 flex items-center justify-between">
@@ -958,6 +890,7 @@ export default function KpiAnalyticsPage() {
                     <SortTh label="Total"      col="total"     sort={sort} onSort={handleSort} />
                     <SortTh label="Completion" col="done"      sort={sort} onSort={handleSort} />
                     <SortTh label="Pending"    col="pending"   sort={sort} onSort={handleSort} />
+                    <SortTh label="Hold"       col="hold"      sort={sort} onSort={handleSort} />
                     <SortTh label="Escalation" col="escalated" sort={sort} onSort={handleSort} />
                     <SortTh label="Avg TAT"    col="avgTat"    sort={sort} onSort={handleSort} />
                     <SortTh label="Rate"       col="rate"      sort={sort} onSort={handleSort} />
@@ -966,7 +899,7 @@ export default function KpiAnalyticsPage() {
                 </thead>
                 <tbody>
                   {sortedAgents.length === 0 && (
-                    <tr><td colSpan={9} className="px-5 py-10 text-center text-slate-400 dark:text-zinc-500 text-sm">No data</td></tr>
+                    <tr><td colSpan={10} className="px-5 py-10 text-center text-slate-400 dark:text-zinc-500 text-sm">No data</td></tr>
                   )}
                   {sortedAgents.map((a) => (
                     <tr key={a.agentId} className="border-b border-slate-100 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors">
@@ -982,6 +915,11 @@ export default function KpiAnalyticsPage() {
                       <td className="px-4 py-3.5 text-slate-700 dark:text-zinc-300 font-semibold tabular-nums">{a.total}</td>
                       <td className="px-4 py-3.5 text-green-600 dark:text-green-400 font-semibold tabular-nums">{a.done}</td>
                       <td className="px-4 py-3.5 text-amber-500 dark:text-amber-400 tabular-nums">{a.pending}</td>
+                      <td className="px-4 py-3.5 tabular-nums">
+                        <span className="flex items-center gap-1 text-blue-500 dark:text-blue-400">
+                          <PauseCircle size={11} />{a.hold}
+                        </span>
+                      </td>
                       <td className="px-4 py-3.5 text-purple-500 dark:text-purple-400 tabular-nums">{a.escalated}</td>
                       <td className="px-4 py-3.5 font-mono text-indigo-500 dark:text-indigo-400 text-xs tabular-nums">{formatTat(a.avgTat)}</td>
                       <td className="px-4 py-3.5">
