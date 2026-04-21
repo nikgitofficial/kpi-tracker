@@ -2161,7 +2161,7 @@ const res = await fetch("/api/kpi/transactions", {
             
           </div>
    
-{/* Marquee */}
+{/* Marque */}
 <div className="flex-1 overflow-hidden rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-1">
   <div
     className="whitespace-nowrap text-[11px] font-semibold text-amber-700 dark:text-amber-300 flex items-center gap-6"
