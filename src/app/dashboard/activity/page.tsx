@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Activity, TrendingUp, CheckCircle2, Clock,
   AlertTriangle, Users, FileText, ChevronDown, PauseCircle, Timer,
-  Play, Coffee, Zap, LayoutGrid, List,
+  Play, Coffee, Zap, LayoutGrid, List, Square, LogIn, LogOut,
+  Pause, RefreshCw,
 } from "lucide-react";
 
 /* ─── Types ─── */
@@ -26,6 +27,8 @@ interface Transaction {
   productiveSeconds?: number;
   countType?: "transaction" | "volume";
   ownerEmail?: string;
+  timerStartEpoch?: number;
+  timerPaused?: boolean;
 }
 
 interface Agent {
@@ -119,23 +122,110 @@ function useTick(ms = 1000) {
 }
 
 /* ═══════════════════════════════════
+   ─── Action Button
+═══════════════════════════════════ */
+type ActionVariant = "emerald" | "amber" | "red" | "indigo" | "slate" | "blue";
+
+interface ActionButtonProps {
+  icon: React.ElementType;
+  label: string;
+  variant: ActionVariant;
+  onClick: () => void;
+  loading?: boolean;
+  disabled?: boolean;
+  small?: boolean;
+}
+
+const VARIANT_STYLES: Record<ActionVariant, string> = {
+  emerald: "bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60",
+  amber:   "bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/60",
+  red:     "bg-rose-50 dark:bg-rose-950/50 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/60",
+  indigo:  "bg-indigo-50 dark:bg-indigo-950/50 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60",
+  slate:   "bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700",
+  blue:    "bg-blue-50 dark:bg-blue-950/50 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60",
+};
+
+function ActionButton({ icon: Icon, label, variant, onClick, loading, disabled, small }: ActionButtonProps) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled || loading}
+      className={`flex items-center justify-center gap-1.5 border rounded-xl font-semibold transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed
+        ${small ? "px-2 py-1.5 text-[10px]" : "px-3 py-2 text-[11px]"}
+        ${VARIANT_STYLES[variant]}
+      `}
+    >
+      {loading
+        ? <RefreshCw size={small ? 9 : 10} className="animate-spin" />
+        : <Icon size={small ? 9 : 10} />
+      }
+      {label}
+    </button>
+  );
+}
+
+/* ═══════════════════════════════════
+   ─── Confirm modal
+═══════════════════════════════════ */
+interface ConfirmModalProps {
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+function ConfirmModal({ message, onConfirm, onCancel }: ConfirmModalProps) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl">
+        <p className="text-sm text-slate-700 dark:text-zinc-200 font-medium mb-5">{message}</p>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 text-white hover:bg-rose-700 transition-colors"
+          >
+            Confirm
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════
    ─── Agent Status Card
 ═══════════════════════════════════ */
-function AgentStatusCard({ status, index }: { status: AgentStatus; index: number }) {
+interface AgentStatusCardProps {
+  status: AgentStatus;
+  index: number;
+  onRefresh: () => void;
+}
+
+function AgentStatusCard({ status, index, onRefresh }: AgentStatusCardProps) {
   useTick(1000);
 
   const { agent, session, transactions, isOnBreak, isActive } = status;
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<{ message: string; action: () => void } | null>(null);
 
+  /* ── Derive productive seconds live ── */
+  const timerTx = transactions.find(t => t.docType === "__PROD_TIMER__") as (Transaction & { timerStartEpoch?: number; timerPaused?: boolean }) | undefined;
   const productiveSeconds = (() => {
-    const timerTx = transactions.find(t => t.docType === "__PROD_TIMER__");
     if (!timerTx) return 0;
     const acc = timerTx.productiveSeconds ?? 0;
-    if ((timerTx as any).timerStartEpoch && !(timerTx as any).timerPaused) {
-      return acc + Math.floor((Date.now() - (timerTx as any).timerStartEpoch) / 1000);
+    if (timerTx.timerStartEpoch && !timerTx.timerPaused) {
+      return acc + Math.floor((Date.now() - timerTx.timerStartEpoch) / 1000);
     }
     return acc;
   })();
+  const timerPaused = !!(timerTx?.timerPaused);
+  const timerExists = !!timerTx;
 
+  /* ── Live break seconds ── */
   const liveBreakSeconds = (() => {
     if (!session) return 0;
     const ongoing = session.breaks.find(b => !b.endEpoch);
@@ -146,140 +236,294 @@ function AgentStatusCard({ status, index }: { status: AgentStatus; index: number
   const totalBreakSeconds = (session?.totalBreakSeconds ?? 0) + liveBreakSeconds;
   const completedBreaks   = session?.breaks.filter(b => b.endEpoch).length ?? 0;
 
-  const realTx   = transactions.filter(t => t.docType !== "__PROD_TIMER__");
-  const done     = realTx.filter(t => t.status === "COMPLETION").length;
-  const hold     = realTx.filter(t => t.status === "HOLD").length;
-  const esc      = realTx.filter(t => t.status === "ESCALATION").length;
-  const pending  = realTx.filter(t => t.status === "PENDING").length;
-  const totalTx  = realTx.length;
+  const realTx  = transactions.filter(t => t.docType !== "__PROD_TIMER__");
+  const done    = realTx.filter(t => t.status === "COMPLETION").length;
+  const hold    = realTx.filter(t => t.status === "HOLD").length;
+  const esc     = realTx.filter(t => t.status === "ESCALATION").length;
+  const totalTx = realTx.length;
 
-  const SHIFT    = 8 * 3600;
-  const prodPct  = Math.min(100, Math.round((productiveSeconds / SHIFT) * 100));
-  const av       = avatarColor(agent.name);
+  const SHIFT   = 8 * 3600;
+  const prodPct = Math.min(100, Math.round((productiveSeconds / SHIFT) * 100));
+  const av      = avatarColor(agent.name);
+
+  /* ── Generic API caller ── */
+  const callApi = async (key: string, url: string, body: object) => {
+    setActionLoading(key);
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await onRefresh();
+    } catch (err) {
+      console.error(`Action ${key} failed:`, err);
+      alert(`Action failed: ${(err as Error).message}`);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  /* ── Actions ── */
+  const handleStartSession = () =>
+    callApi("start-session", "/api/kpi/session/start", { agentId: agent._id, date: today() });
+
+  const handleEndSession = () =>
+    setConfirm({
+      message: `End session for ${agent.name}? This will clock them out for today.`,
+      action: () => callApi("end-session", "/api/kpi/session/end", { agentId: agent._id, date: today() }),
+    });
+
+  const handleStartBreak = () =>
+    callApi("start-break", "/api/kpi/session/break/start", { agentId: agent._id });
+
+  const handleEndBreak = () =>
+    callApi("end-break", "/api/kpi/session/break/end", { agentId: agent._id });
+
+  const handlePauseTimer = () =>
+    callApi("pause-timer", "/api/kpi/timer/pause", { agentId: agent._id, date: today() });
+
+  const handleResumeTimer = () =>
+    callApi("resume-timer", "/api/kpi/timer/resume", { agentId: agent._id, date: today() });
+
+  const sessionEnded = !!(session?.sessionEndEpoch);
 
   return (
-    <div className={`bg-white dark:bg-zinc-900 border rounded-2xl overflow-hidden transition-all ${
-      isOnBreak
-        ? "border-amber-200 dark:border-amber-800"
-        : isActive
-        ? "border-emerald-200 dark:border-emerald-800"
-        : "border-slate-200 dark:border-zinc-700"
-    }`}>
+    <>
+      {confirm && (
+        <ConfirmModal
+          message={confirm.message}
+          onConfirm={() => { confirm.action(); setConfirm(null); }}
+          onCancel={() => setConfirm(null)}
+        />
+      )}
 
-      {/* Top bar — status color accent */}
-      <div className={`h-1 w-full ${isOnBreak ? "bg-amber-400" : isActive ? "bg-emerald-500" : "bg-slate-200 dark:bg-zinc-700"}`} />
+      <div className={`bg-white dark:bg-zinc-900 border rounded-2xl overflow-hidden transition-all ${
+        isOnBreak
+          ? "border-amber-200 dark:border-amber-800"
+          : isActive
+          ? "border-emerald-200 dark:border-emerald-800"
+          : sessionEnded
+          ? "border-slate-200 dark:border-zinc-700 opacity-75"
+          : "border-slate-200 dark:border-zinc-700"
+      }`}>
 
-      {/* Card header */}
-      <div className="px-4 pt-3.5 pb-3 flex items-center gap-3 border-b border-slate-100 dark:border-zinc-800">
-        <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0 ${av.bg} ${av.text}`}>
-          {agent.name.slice(0, 2).toUpperCase()}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-slate-800 dark:text-zinc-100 truncate">{agent.name}</p>
-          {agent.group && <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">{agent.group}</p>}
-        </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          {isOnBreak ? (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400 text-[10px] font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-              Break
-            </span>
-          ) : isActive ? (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Working
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-400 dark:text-zinc-500 text-[10px] font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-              Idle
-            </span>
-          )}
-        </div>
-      </div>
+        {/* Top bar accent */}
+        <div className={`h-1 w-full ${
+          isOnBreak ? "bg-amber-400" :
+          isActive ? "bg-emerald-500" :
+          sessionEnded ? "bg-slate-300 dark:bg-zinc-600" :
+          "bg-slate-200 dark:bg-zinc-700"
+        }`} />
 
-      {/* TX stats */}
-      <div className="grid grid-cols-4 divide-x divide-slate-100 dark:divide-zinc-800 border-b border-slate-100 dark:border-zinc-800">
-        {[
-          { label: "TX",      value: totalTx, color: "text-slate-700 dark:text-zinc-200" },
-          { label: "Done",    value: done,    color: "text-emerald-600 dark:text-emerald-400" },
-          { label: "Hold",    value: hold,    color: "text-blue-500 dark:text-blue-400" },
-          { label: "Esc",     value: esc,     color: "text-purple-600 dark:text-purple-400" },
-        ].map(s => (
-          <div key={s.label} className="py-2.5 text-center">
-            <p className={`text-base font-bold leading-none ${s.color}`}>{s.value}</p>
-            <p className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide mt-0.5">{s.label}</p>
+        {/* Card header */}
+        <div className="px-4 pt-3.5 pb-3 flex items-center gap-3 border-b border-slate-100 dark:border-zinc-800">
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0 ${av.bg} ${av.text}`}>
+            {agent.name.slice(0, 2).toUpperCase()}
           </div>
-        ))}
-      </div>
-
-      {/* Productive time bar */}
-      <div className="px-4 py-3 border-b border-slate-100 dark:border-zinc-800">
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-zinc-500">
-            <Zap size={9} className="text-emerald-500" />
-            Productive
-          </span>
-          <span className="text-[11px] font-mono font-semibold text-emerald-600 dark:text-emerald-400">
-            {formatHms(productiveSeconds)}
-          </span>
-        </div>
-        <div className="h-1.5 rounded-full bg-slate-100 dark:bg-zinc-800 overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all duration-1000 ${
-              isOnBreak ? "bg-amber-400" : isActive ? "bg-emerald-500" : "bg-slate-300 dark:bg-zinc-600"
-            }`}
-            style={{ width: `${prodPct}%` }}
-          />
-        </div>
-        <div className="flex justify-between mt-1">
-          <span className="text-[9px] text-slate-400 dark:text-zinc-600">{prodPct}% of shift</span>
-          <span className="text-[9px] text-slate-400 dark:text-zinc-600">8h target</span>
-        </div>
-      </div>
-
-      {/* Break info */}
-      <div className="px-4 py-3">
-        <div className="flex items-center justify-between">
-          <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-zinc-500">
-            <Coffee size={9} className="text-amber-500" />
-            Bio breaks
-          </span>
-          <div className="flex items-center gap-2">
-            {isOnBreak && (
-              <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400 font-semibold animate-pulse">
-                {formatHms(liveBreakSeconds)} live
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-slate-800 dark:text-zinc-100 truncate">{agent.name}</p>
+            {agent.group && <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">{agent.group}</p>}
+          </div>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {isOnBreak ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400 text-[10px] font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                Break
+              </span>
+            ) : isActive ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Working
+              </span>
+            ) : sessionEnded ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-400 dark:text-zinc-500 text-[10px] font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                Clocked out
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-400 dark:text-zinc-500 text-[10px] font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                Idle
               </span>
             )}
-            <span className="text-[10px] text-slate-400 dark:text-zinc-500">
-              {completedBreaks} done · {formatHms(totalBreakSeconds)} total
-            </span>
           </div>
         </div>
 
-        {/* Break pills */}
-        {session && session.breaks.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-2">
-            {session.breaks.map((b, i) => (
-              <span
-                key={b._id}
-                className={`text-[9px] px-1.5 py-0.5 rounded-md font-semibold ${
-                  !b.endEpoch
-                    ? "bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 animate-pulse"
-                    : "bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700"
-                }`}
-              >
-                #{i + 1} {b.endEpoch ? formatHms(b.durationSeconds) : "live"}
-              </span>
-            ))}
-          </div>
-        )}
+        {/* TX stats */}
+        <div className="grid grid-cols-4 divide-x divide-slate-100 dark:divide-zinc-800 border-b border-slate-100 dark:border-zinc-800">
+          {[
+            { label: "TX",   value: totalTx, color: "text-slate-700 dark:text-zinc-200" },
+            { label: "Done", value: done,    color: "text-emerald-600 dark:text-emerald-400" },
+            { label: "Hold", value: hold,    color: "text-blue-500 dark:text-blue-400" },
+            { label: "Esc",  value: esc,     color: "text-purple-600 dark:text-purple-400" },
+          ].map(s => (
+            <div key={s.label} className="py-2.5 text-center">
+              <p className={`text-base font-bold leading-none ${s.color}`}>{s.value}</p>
+              <p className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide mt-0.5">{s.label}</p>
+            </div>
+          ))}
+        </div>
 
-        {!session && (
-          <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1.5 italic">No session started</p>
-        )}
+        {/* Productive time bar */}
+        <div className="px-4 py-3 border-b border-slate-100 dark:border-zinc-800">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+              <Zap size={9} className="text-emerald-500" />
+              Productive
+              {timerExists && timerPaused && (
+                <span className="ml-1 px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 text-[9px] font-bold">PAUSED</span>
+              )}
+            </span>
+            <span className="text-[11px] font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+              {formatHms(productiveSeconds)}
+            </span>
+          </div>
+          <div className="h-1.5 rounded-full bg-slate-100 dark:bg-zinc-800 overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-1000 ${
+                timerPaused ? "bg-amber-400" :
+                isOnBreak ? "bg-amber-400" :
+                isActive ? "bg-emerald-500" :
+                "bg-slate-300 dark:bg-zinc-600"
+              }`}
+              style={{ width: `${prodPct}%` }}
+            />
+          </div>
+          <div className="flex justify-between mt-1">
+            <span className="text-[9px] text-slate-400 dark:text-zinc-600">{prodPct}% of shift</span>
+            <span className="text-[9px] text-slate-400 dark:text-zinc-600">8h target</span>
+          </div>
+        </div>
+
+        {/* Break info */}
+        <div className="px-4 py-3 border-b border-slate-100 dark:border-zinc-800">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+              <Coffee size={9} className="text-amber-500" />
+              Bio breaks
+            </span>
+            <div className="flex items-center gap-2">
+              {isOnBreak && (
+                <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400 font-semibold animate-pulse">
+                  {formatHms(liveBreakSeconds)} live
+                </span>
+              )}
+              <span className="text-[10px] text-slate-400 dark:text-zinc-500">
+                {completedBreaks} done · {formatHms(totalBreakSeconds)} total
+              </span>
+            </div>
+          </div>
+
+          {session && session.breaks.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {session.breaks.map((b, i) => (
+                <span
+                  key={b._id}
+                  className={`text-[9px] px-1.5 py-0.5 rounded-md font-semibold ${
+                    !b.endEpoch
+                      ? "bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 animate-pulse"
+                      : "bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700"
+                  }`}
+                >
+                  #{i + 1} {b.endEpoch ? formatHms(b.durationSeconds) : "live"}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {!session && (
+            <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1.5 italic">No session started</p>
+          )}
+        </div>
+
+        {/* ── Action buttons ── */}
+        <div className="px-4 py-3">
+          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-300 dark:text-zinc-600 mb-2">Actions</p>
+          <div className="flex flex-wrap gap-1.5">
+
+            {/* Start Session — only when no session exists */}
+            {!session && (
+              <ActionButton
+                icon={LogIn}
+                label="Start Session"
+                variant="emerald"
+                onClick={handleStartSession}
+                loading={actionLoading === "start-session"}
+                small
+              />
+            )}
+
+            {/* End Session — only when session is active (not yet ended) */}
+            {session && !sessionEnded && (
+              <ActionButton
+                icon={LogOut}
+                label="Clock Out"
+                variant="red"
+                onClick={handleEndSession}
+                loading={actionLoading === "end-session"}
+                small
+              />
+            )}
+
+            {/* Start Break — only when active (not on break, session running) */}
+            {session && !sessionEnded && !isOnBreak && (
+              <ActionButton
+                icon={Coffee}
+                label="Start Break"
+                variant="amber"
+                onClick={handleStartBreak}
+                loading={actionLoading === "start-break"}
+                small
+              />
+            )}
+
+            {/* End Break — only when on break */}
+            {isOnBreak && (
+              <ActionButton
+                icon={Play}
+                label="End Break"
+                variant="emerald"
+                onClick={handleEndBreak}
+                loading={actionLoading === "end-break"}
+                small
+              />
+            )}
+
+            {/* Pause Timer — when timer running and not paused */}
+            {timerExists && !timerPaused && isActive && !isOnBreak && (
+              <ActionButton
+                icon={Pause}
+                label="Pause Timer"
+                variant="slate"
+                onClick={handlePauseTimer}
+                loading={actionLoading === "pause-timer"}
+                small
+              />
+            )}
+
+            {/* Resume Timer — when timer paused */}
+            {timerExists && timerPaused && (
+              <ActionButton
+                icon={Play}
+                label="Resume Timer"
+                variant="indigo"
+                onClick={handleResumeTimer}
+                loading={actionLoading === "resume-timer"}
+                small
+              />
+            )}
+
+            {/* No actions available */}
+            {sessionEnded && (
+              <p className="text-[10px] text-slate-400 dark:text-zinc-500 italic py-1">Session ended for today.</p>
+            )}
+          </div>
+        </div>
+
       </div>
-    </div>
+    </>
   );
 }
 
@@ -301,7 +545,7 @@ export default function ActivityPage() {
   const [page, setPage]                 = useState(1);
   const [view, setView]                 = useState<"timeline" | "status">("status");
   const PAGE_SIZE = 15;
-  const tick = useTick(10000); // refresh status every 10s
+  const tick = useTick(10000);
 
   /* ── Fetch timeline transactions ── */
   useEffect(() => {
@@ -320,7 +564,7 @@ export default function ActivityPage() {
     });
   }, [from, to]);
 
-  /* ── Fetch live agent status (today only) ── */
+  /* ── Fetch live agent status ── */
   const fetchAgentStatus = useCallback(async (agentList: Agent[]) => {
     if (agentList.length === 0) return;
     setStatusLoading(true);
@@ -355,10 +599,21 @@ export default function ActivityPage() {
     if (agents.length > 0) fetchAgentStatus(agents);
   }, [agents, fetchAgentStatus, tick]);
 
+  /* Expose a per-agent refresh so cards can trigger after actions */
+  const refreshAgent = useCallback(async (agentId: string) => {
+    const dateStr = today();
+    const [txRes, sessionRes] = await Promise.all([
+      fetch(`/api/kpi/transactions?date=${dateStr}&agentId=${agentId}`).then(r => r.json()),
+      fetch(`/api/kpi/session?agentId=${agentId}&date=${dateStr}`).then(r => r.json()),
+    ]);
+    setAgentTxMap(prev => ({ ...prev, [agentId]: txRes.transactions ?? [] }));
+    setSessions(prev  => ({ ...prev, [agentId]: sessionRes.session ?? null }));
+  }, []);
+
   /* ── Build agent statuses ── */
   const agentStatuses: AgentStatus[] = agents.map(agent => {
-    const session = sessions[agent._id] ?? null;
-    const txs     = agentTxMap[agent._id] ?? [];
+    const session   = sessions[agent._id] ?? null;
+    const txs       = agentTxMap[agent._id] ?? [];
     const isOnBreak = !!(session?.breaks.find(b => !b.endEpoch));
     const isActive  = !!(session && !session.sessionEndEpoch && !isOnBreak);
 
@@ -396,7 +651,7 @@ export default function ActivityPage() {
     if (!byDate[tx.date]) byDate[tx.date] = [];
     byDate[tx.date].push(tx);
   }
-  const sortedDates = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
+  const sortedDates  = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
   const uniqueAgents = [...new Set(transactions.map(t => t.agentName))].sort();
 
   const formattedFrom = new Date(from + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -414,7 +669,6 @@ export default function ActivityPage() {
             <p className="text-slate-400 dark:text-zinc-500 text-sm mt-0.5">{formattedFrom} — {formattedTo}</p>
           </div>
 
-          {/* View toggle */}
           <div className="flex items-center gap-1 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-1">
             <button
               onClick={() => setView("status")}
@@ -449,50 +703,17 @@ export default function ActivityPage() {
             {/* Team summary bar */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
               {[
-                {
-                  label: "Working",
-                  value: activeCount,
-                  icon: Play,
-                  color: "text-emerald-600 dark:text-emerald-400",
-                  bg: "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800",
-                  dot: "bg-emerald-500",
-                },
-                {
-                  label: "On break",
-                  value: breakCount,
-                  icon: Coffee,
-                  color: "text-amber-600 dark:text-amber-400",
-                  bg: "bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800",
-                  dot: "bg-amber-500",
-                },
-                {
-                  label: "Idle / offline",
-                  value: idleCount,
-                  icon: Clock,
-                  color: "text-slate-500 dark:text-zinc-400",
-                  bg: "bg-slate-100 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700",
-                  dot: "bg-slate-400",
-                },
-                {
-                  label: "TX today",
-                  value: totalTodayTx,
-                  icon: Activity,
-                  color: "text-indigo-600 dark:text-indigo-400",
-                  bg: "bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800",
-                  dot: "bg-indigo-500",
-                },
+                { label: "Working",      value: activeCount,  icon: Play,     color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800", dot: "bg-emerald-500", ping: activeCount > 0 },
+                { label: "On break",     value: breakCount,   icon: Coffee,   color: "text-amber-600 dark:text-amber-400",     bg: "bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800",         dot: "bg-amber-500",  ping: breakCount > 0  },
+                { label: "Idle/offline", value: idleCount,    icon: Clock,    color: "text-slate-500 dark:text-zinc-400",      bg: "bg-slate-100 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700",              dot: "bg-slate-400",  ping: false           },
+                { label: "TX today",     value: totalTodayTx, icon: Activity, color: "text-indigo-600 dark:text-indigo-400",   bg: "bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800",      dot: "bg-indigo-500", ping: false           },
               ].map(s => {
                 const Icon = s.icon;
                 return (
                   <div key={s.label} className={`border rounded-2xl px-4 py-3.5 flex items-center gap-3 ${s.bg}`}>
                     <div className="relative flex-shrink-0">
                       <span className={`w-2.5 h-2.5 rounded-full block ${s.dot}`} />
-                      {s.label === "Working" && activeCount > 0 && (
-                        <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-60" />
-                      )}
-                      {s.label === "On break" && breakCount > 0 && (
-                        <span className="absolute inset-0 rounded-full bg-amber-400 animate-ping opacity-60" />
-                      )}
+                      {s.ping && <span className={`absolute inset-0 rounded-full ${s.dot} animate-ping opacity-60`} />}
                     </div>
                     <div className="min-w-0">
                       <p className={`text-2xl font-bold leading-none ${s.color}`}>{s.value}</p>
@@ -514,12 +735,16 @@ export default function ActivityPage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {agentStatuses.map((s, i) => (
-                  <AgentStatusCard key={s.agent._id} status={s} index={i} />
+                  <AgentStatusCard
+                    key={s.agent._id}
+                    status={s}
+                    index={i}
+                    onRefresh={() => refreshAgent(s.agent._id)}
+                  />
                 ))}
               </div>
             )}
 
-            {/* Refreshing indicator */}
             <p className="text-center text-[10px] text-slate-300 dark:text-zinc-700 mt-6 uppercase tracking-widest">
               Auto-refreshes every 10s
             </p>
