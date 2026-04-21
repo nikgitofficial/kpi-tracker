@@ -56,8 +56,8 @@ interface AgentSession {
 interface AgentStatus {
   agent: Agent;
   session: AgentSession | null;
-  transactions: Transaction[];
-  productiveSeconds: number;
+  transactions: Transaction[];       // all tx including __PROD_TIMER__
+  productiveSeconds: number;         // FIX: derived from __PROD_TIMER__ record
   liveBreakSeconds: number;
   isOnBreak: boolean;
   isActive: boolean;
@@ -109,9 +109,7 @@ const STATUS_CONFIG = {
   HOLD:       { label: "Hold",       color: "text-blue-600 dark:text-blue-400",     bg: "bg-blue-50 dark:bg-blue-950/50 border-blue-200 dark:border-blue-800",         dot: "bg-blue-500"   },
 };
 
-/* ═══════════════════════════════════
-   ─── Live tick
-═══════════════════════════════════ */
+/* ─── Live tick ─── */
 function useTick(ms = 1000) {
   const [t, setT] = useState(0);
   useEffect(() => {
@@ -121,9 +119,7 @@ function useTick(ms = 1000) {
   return t;
 }
 
-/* ═══════════════════════════════════
-   ─── Action Button
-═══════════════════════════════════ */
+/* ─── Action Button ─── */
 type ActionVariant = "emerald" | "amber" | "red" | "indigo" | "slate" | "blue";
 
 interface ActionButtonProps {
@@ -164,9 +160,7 @@ function ActionButton({ icon: Icon, label, variant, onClick, loading, disabled, 
   );
 }
 
-/* ═══════════════════════════════════
-   ─── Confirm modal
-═══════════════════════════════════ */
+/* ─── Confirm modal ─── */
 interface ConfirmModalProps {
   message: string;
   onConfirm: () => void;
@@ -196,23 +190,21 @@ function ConfirmModal({ message, onConfirm, onCancel }: ConfirmModalProps) {
   );
 }
 
-/* ═══════════════════════════════════
-   ─── Agent Status Card
-═══════════════════════════════════ */
+/* ─── Agent Status Card ─── */
 interface AgentStatusCardProps {
   status: AgentStatus;
   index: number;
   onRefresh: () => void;
 }
 
-function AgentStatusCard({ status, index, onRefresh }: AgentStatusCardProps) {
+function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
   useTick(1000);
 
   const { agent, session, transactions, isOnBreak, isActive } = status;
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ message: string; action: () => void } | null>(null);
 
-  /* ── Derive productive seconds live ── */
+  /* ── Derive productive seconds live from __PROD_TIMER__ tx ── */
   const timerTx = transactions.find(t => t.docType === "__PROD_TIMER__") as (Transaction & { timerStartEpoch?: number; timerPaused?: boolean }) | undefined;
   const productiveSeconds = (() => {
     if (!timerTx) return 0;
@@ -236,6 +228,7 @@ function AgentStatusCard({ status, index, onRefresh }: AgentStatusCardProps) {
   const totalBreakSeconds = (session?.totalBreakSeconds ?? 0) + liveBreakSeconds;
   const completedBreaks   = session?.breaks.filter(b => b.endEpoch).length ?? 0;
 
+  // FIX: filter out __PROD_TIMER__ for tx counts
   const realTx  = transactions.filter(t => t.docType !== "__PROD_TIMER__");
   const done    = realTx.filter(t => t.status === "COMPLETION").length;
   const hold    = realTx.filter(t => t.status === "HOLD").length;
@@ -265,7 +258,6 @@ function AgentStatusCard({ status, index, onRefresh }: AgentStatusCardProps) {
     }
   };
 
-  /* ── Actions ── */
   const handleStartSession = () =>
     callApi("start-session", "/api/kpi/session/start", { agentId: agent._id, date: today() });
 
@@ -438,90 +430,33 @@ function AgentStatusCard({ status, index, onRefresh }: AgentStatusCardProps) {
           )}
         </div>
 
-        {/* ── Action buttons ── */}
+        {/* Action buttons */}
         <div className="px-4 py-3">
           <p className="text-[9px] font-bold uppercase tracking-widest text-slate-300 dark:text-zinc-600 mb-2">Actions</p>
           <div className="flex flex-wrap gap-1.5">
-
-            {/* Start Session — only when no session exists */}
             {!session && (
-              <ActionButton
-                icon={LogIn}
-                label="Start Session"
-                variant="emerald"
-                onClick={handleStartSession}
-                loading={actionLoading === "start-session"}
-                small
-              />
+              <ActionButton icon={LogIn} label="Start Session" variant="emerald" onClick={handleStartSession} loading={actionLoading === "start-session"} small />
             )}
-
-            {/* End Session — only when session is active (not yet ended) */}
             {session && !sessionEnded && (
-              <ActionButton
-                icon={LogOut}
-                label="Clock Out"
-                variant="red"
-                onClick={handleEndSession}
-                loading={actionLoading === "end-session"}
-                small
-              />
+              <ActionButton icon={LogOut} label="Clock Out" variant="red" onClick={handleEndSession} loading={actionLoading === "end-session"} small />
             )}
-
-            {/* Start Break — only when active (not on break, session running) */}
             {session && !sessionEnded && !isOnBreak && (
-              <ActionButton
-                icon={Coffee}
-                label="Start Break"
-                variant="amber"
-                onClick={handleStartBreak}
-                loading={actionLoading === "start-break"}
-                small
-              />
+              <ActionButton icon={Coffee} label="Start Break" variant="amber" onClick={handleStartBreak} loading={actionLoading === "start-break"} small />
             )}
-
-            {/* End Break — only when on break */}
             {isOnBreak && (
-              <ActionButton
-                icon={Play}
-                label="End Break"
-                variant="emerald"
-                onClick={handleEndBreak}
-                loading={actionLoading === "end-break"}
-                small
-              />
+              <ActionButton icon={Play} label="End Break" variant="emerald" onClick={handleEndBreak} loading={actionLoading === "end-break"} small />
             )}
-
-            {/* Pause Timer — when timer running and not paused */}
             {timerExists && !timerPaused && isActive && !isOnBreak && (
-              <ActionButton
-                icon={Pause}
-                label="Pause Timer"
-                variant="slate"
-                onClick={handlePauseTimer}
-                loading={actionLoading === "pause-timer"}
-                small
-              />
+              <ActionButton icon={Pause} label="Pause Timer" variant="slate" onClick={handlePauseTimer} loading={actionLoading === "pause-timer"} small />
             )}
-
-            {/* Resume Timer — when timer paused */}
             {timerExists && timerPaused && (
-              <ActionButton
-                icon={Play}
-                label="Resume Timer"
-                variant="indigo"
-                onClick={handleResumeTimer}
-                loading={actionLoading === "resume-timer"}
-                small
-              />
+              <ActionButton icon={Play} label="Resume Timer" variant="indigo" onClick={handleResumeTimer} loading={actionLoading === "resume-timer"} small />
             )}
-
-            {/* No actions available */}
             {sessionEnded && (
               <p className="text-[10px] text-slate-400 dark:text-zinc-500 italic py-1">Session ended for today.</p>
             )}
           </div>
         </div>
-
       </div>
     </>
   );
@@ -531,33 +466,45 @@ function AgentStatusCard({ status, index, onRefresh }: AgentStatusCardProps) {
    ─── Main Activity Page
 ═══════════════════════════════════ */
 export default function ActivityPage() {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [agents, setAgents]             = useState<Agent[]>([]);
-  const [sessions, setSessions]         = useState<Record<string, AgentSession | null>>({});
-  const [agentTxMap, setAgentTxMap]     = useState<Record<string, Transaction[]>>({});
-  const [loading, setLoading]           = useState(true);
-  const [statusLoading, setStatusLoading] = useState(true);
-  const [from, setFrom]                 = useState(daysAgo(6));
-  const [to, setTo]                     = useState(today());
-  const [filterAgent, setFilterAgent]   = useState("all");
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [filterCategory, setFilterCategory] = useState("all");
-  const [page, setPage]                 = useState(1);
-  const [view, setView]                 = useState<"timeline" | "status">("status");
+  // FIX: separate raw transactions (display) from timer records
+  const [transactions, setTransactions]         = useState<Transaction[]>([]);
+  const [timerTxByAgent, setTimerTxByAgent]     = useState<Record<string, Transaction | null>>({});
+  const [agents, setAgents]                     = useState<Agent[]>([]);
+  const [sessions, setSessions]                 = useState<Record<string, AgentSession | null>>({});
+  const [agentTxMap, setAgentTxMap]             = useState<Record<string, Transaction[]>>({});
+  const [loading, setLoading]                   = useState(true);
+  const [statusLoading, setStatusLoading]       = useState(true);
+  const [from, setFrom]                         = useState(daysAgo(6));
+  const [to, setTo]                             = useState(today());
+  const [filterAgent, setFilterAgent]           = useState("all");
+  const [filterStatus, setFilterStatus]         = useState("all");
+  const [filterCategory, setFilterCategory]     = useState("all");
+  const [page, setPage]                         = useState(1);
+  const [view, setView]                         = useState<"timeline" | "status">("status");
   const PAGE_SIZE = 15;
   const tick = useTick(10000);
 
-  /* ── Fetch timeline transactions ── */
+  /* ── Fetch timeline transactions ──
+     FIX: keep __PROD_TIMER__ separate for accurate productive seconds
+  ── */
   useEffect(() => {
     setLoading(true);
     Promise.all([
       fetch(`/api/kpi/transactions?from=${from}&to=${to}`).then(r => r.json()),
       fetch("/api/kpi/agents").then(r => r.json()),
     ]).then(([txData, agentData]) => {
-      const allTx: Transaction[] = (txData.transactions ?? []).filter(
-        (t: Transaction) => t.docType !== "__PROD_TIMER__"
-      );
-      setTransactions(allTx);
+      const allTx: Transaction[] = txData.transactions ?? [];
+
+      // FIX: split out timer records vs real transactions
+      const realTx    = allTx.filter(t => t.docType !== "__PROD_TIMER__");
+      const timerMap: Record<string, Transaction | null> = {};
+      allTx.filter(t => t.docType === "__PROD_TIMER__").forEach(t => {
+        // key by agentId; last one wins (should only be one per agent per day range)
+        timerMap[t.agentId] = t;
+      });
+
+      setTransactions(realTx);
+      setTimerTxByAgent(timerMap);
       setAgents(agentData.agents ?? []);
       setLoading(false);
       setPage(1);
@@ -578,16 +525,18 @@ export default function ActivityPage() {
         ]);
         return {
           agentId: agent._id,
+          // FIX: keep ALL txs (including __PROD_TIMER__) for the status card
+          // The card itself derives productiveSeconds from the timer record
           txs: txRes.transactions ?? [],
           session: sessionRes.session ?? null,
         };
       })
     );
 
-    const txMap: Record<string, Transaction[]> = {};
+    const txMap: Record<string, Transaction[]>          = {};
     const sessionMap: Record<string, AgentSession | null> = {};
     results.forEach(r => {
-      txMap[r.agentId] = r.txs;
+      txMap[r.agentId]     = r.txs;
       sessionMap[r.agentId] = r.session;
     });
     setAgentTxMap(txMap);
@@ -599,7 +548,7 @@ export default function ActivityPage() {
     if (agents.length > 0) fetchAgentStatus(agents);
   }, [agents, fetchAgentStatus, tick]);
 
-  /* Expose a per-agent refresh so cards can trigger after actions */
+  /* Per-agent refresh after actions */
   const refreshAgent = useCallback(async (agentId: string) => {
     const dateStr = today();
     const [txRes, sessionRes] = await Promise.all([
@@ -607,7 +556,7 @@ export default function ActivityPage() {
       fetch(`/api/kpi/session?agentId=${agentId}&date=${dateStr}`).then(r => r.json()),
     ]);
     setAgentTxMap(prev => ({ ...prev, [agentId]: txRes.transactions ?? [] }));
-    setSessions(prev  => ({ ...prev, [agentId]: sessionRes.session ?? null }));
+    setSessions(prev  => ({ ...prev, [agentId]:  sessionRes.session ?? null }));
   }, []);
 
   /* ── Build agent statuses ── */
@@ -617,19 +566,35 @@ export default function ActivityPage() {
     const isOnBreak = !!(session?.breaks.find(b => !b.endEpoch));
     const isActive  = !!(session && !session.sessionEndEpoch && !isOnBreak);
 
-    return { agent, session, transactions: txs, productiveSeconds: 0, liveBreakSeconds: 0, isOnBreak, isActive };
+    // FIX: derive productiveSeconds from __PROD_TIMER__ record in this agent's txs
+    const timerTx = txs.find(t => t.docType === "__PROD_TIMER__");
+    const productiveSeconds = (() => {
+      if (!timerTx) return 0;
+      const acc = timerTx.productiveSeconds ?? 0;
+      if (timerTx.timerStartEpoch && !timerTx.timerPaused) {
+        return acc + Math.floor((Date.now() - timerTx.timerStartEpoch) / 1000);
+      }
+      return acc;
+    })();
+
+    return { agent, session, transactions: txs, productiveSeconds, liveBreakSeconds: 0, isOnBreak, isActive };
   });
 
-  /* ── Team summary ── */
+  /* ── Team summary (live status view) ── */
   const activeCount  = agentStatuses.filter(s => s.isActive).length;
   const breakCount   = agentStatuses.filter(s => s.isOnBreak).length;
   const idleCount    = agentStatuses.filter(s => !s.isActive && !s.isOnBreak).length;
-  const totalTodayTx = Object.values(agentTxMap).flat().filter(t => t.docType !== "__PROD_TIMER__").length;
 
-  /* ── Timeline filter ── */
+  // FIX: exclude __PROD_TIMER__ from today's TX count
+  const totalTodayTx = Object.values(agentTxMap)
+    .flat()
+    .filter(t => t.docType !== "__PROD_TIMER__")
+    .length;
+
+  /* ── Timeline filters ── */
   const filtered = transactions.filter(tx => {
-    if (filterAgent !== "all" && tx.agentName !== filterAgent) return false;
-    if (filterStatus !== "all" && tx.status !== filterStatus) return false;
+    if (filterAgent   !== "all" && tx.agentName                    !== filterAgent)   return false;
+    if (filterStatus  !== "all" && tx.status                       !== filterStatus)  return false;
     if (filterCategory !== "all" && (tx.taskCategory ?? "Production") !== filterCategory) return false;
     return true;
   });
@@ -637,15 +602,27 @@ export default function ActivityPage() {
   const paginated = filtered.slice(0, page * PAGE_SIZE);
   const hasMore   = filtered.length > paginated.length;
 
-  /* ── Stats ── */
-  const totalTat           = transactions.reduce((s, t) => s + (t.tat ?? 0), 0);
-  const totalProductiveSec = transactions.reduce((s, t) => s + (t.productiveSeconds ?? 0), 0);
-  const completions        = transactions.filter(t => t.status === "COMPLETION").length;
-  const escalations        = transactions.filter(t => t.status === "ESCALATION").length;
-  const holds              = transactions.filter(t => t.status === "HOLD").length;
-  const completionRate     = transactions.length ? Math.round((completions / transactions.length) * 100) : 0;
+  /* ── Timeline stats ──
+     FIX: productive seconds come from timerTxByAgent, NOT from real transactions
+  ── */
+  const completions    = transactions.filter(t => t.status === "COMPLETION").length;
+  const escalations    = transactions.filter(t => t.status === "ESCALATION").length;
+  const holds          = transactions.filter(t => t.status === "HOLD").length;
+  const completionRate = transactions.length ? Math.round((completions / transactions.length) * 100) : 0;
+  const totalTat       = transactions.reduce((s, t) => s + (t.tat ?? 0), 0);
 
-  /* ── Group by date ── */
+  // FIX: sum productive seconds from the timer records keyed by agent
+  const totalProductiveSec = Object.values(timerTxByAgent).reduce((sum, timerTx) => {
+    if (!timerTx) return sum;
+    const acc = timerTx.productiveSeconds ?? 0;
+    // If the timer was running (not paused) and has a start epoch, add live seconds
+    if (timerTx.timerStartEpoch && !timerTx.timerPaused) {
+      return sum + acc + Math.floor((Date.now() - timerTx.timerStartEpoch) / 1000);
+    }
+    return sum + acc;
+  }, 0);
+
+  /* ── Group by date for timeline ── */
   const byDate: Record<string, Transaction[]> = {};
   for (const tx of paginated) {
     if (!byDate[tx.date]) byDate[tx.date] = [];
@@ -661,7 +638,7 @@ export default function ActivityPage() {
     <div className="min-h-dvh bg-slate-50 dark:bg-zinc-950">
       <main className="max-w-5xl mx-auto px-6 py-8">
 
-        {/* ── Header ── */}
+        {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-widest text-indigo-500 dark:text-indigo-400 mb-1">KPI</p>
@@ -794,15 +771,15 @@ export default function ActivityPage() {
               </div>
             </div>
 
-            {/* Stats row */}
+            {/* Stats row — FIX: totalProductiveSec now comes from timer records */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
               {[
-                { label: "Total TX",        value: transactions.length,           icon: Activity,      color: "text-slate-700 dark:text-zinc-200"    },
-                { label: "Completion rate", value: `${completionRate}%`,          icon: CheckCircle2,  color: "text-green-600 dark:text-green-400"   },
-                { label: "Hold",            value: holds,                         icon: PauseCircle,   color: "text-blue-500 dark:text-blue-400"     },
-                { label: "Escalations",     value: escalations,                   icon: AlertTriangle, color: "text-purple-600 dark:text-purple-400" },
-                { label: "Total TAT",       value: formatHms(totalTat),           icon: Clock,         color: "text-indigo-600 dark:text-indigo-400" },
-                { label: "Productive time", value: formatHms(totalProductiveSec), icon: Timer,         color: "text-cyan-600 dark:text-cyan-400"     },
+                { label: "Total TX",        value: transactions.length, icon: Activity,      color: "text-slate-700 dark:text-zinc-200"    },
+                { label: "Completion rate", value: `${completionRate}%`, icon: CheckCircle2, color: "text-green-600 dark:text-green-400"   },
+                { label: "Hold",            value: holds,                icon: PauseCircle,  color: "text-blue-500 dark:text-blue-400"     },
+                { label: "Escalations",     value: escalations,          icon: AlertTriangle,color: "text-purple-600 dark:text-purple-400" },
+                { label: "Total TAT",       value: formatHms(totalTat),  icon: Clock,        color: "text-indigo-600 dark:text-indigo-400" },
+                { label: "Productive time", value: formatHms(totalProductiveSec), icon: Timer, color: "text-cyan-600 dark:text-cyan-400"  },
               ].map(s => {
                 const Icon = s.icon;
                 return (
@@ -819,17 +796,31 @@ export default function ActivityPage() {
               })}
             </div>
 
-            {/* Agent summary pills */}
+            {/* Agent summary pills —
+                FIX: show productive time from timerTxByAgent; fall back to TAT only if no timer record.
+                Label clearly indicates which value is shown.
+            */}
             {agents.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-6">
                 {agents.map(agent => {
-                  const av         = avatarColor(agent.name);
-                  const agentTx    = transactions.filter(t => t.agentName === agent.name);
-                  const agentProd  = agentTx.reduce((s, t) => s + (t.productiveSeconds ?? 0), 0);
-                  const agentTat   = agentTx.reduce((s, t) => s + (t.tat ?? 0), 0);
-                  const agentCompl = agentTx.filter(t => t.status === "COMPLETION").length;
-                  const agentHold  = agentTx.filter(t => t.status === "HOLD").length;
-                  const isSelected = filterAgent === agent.name;
+                  const av          = avatarColor(agent.name);
+                  const agentTx     = transactions.filter(t => t.agentName === agent.name);
+                  const agentTat    = agentTx.reduce((s, t) => s + (t.tat ?? 0), 0);
+                  const agentCompl  = agentTx.filter(t => t.status === "COMPLETION").length;
+                  const agentHold   = agentTx.filter(t => t.status === "HOLD").length;
+                  const isSelected  = filterAgent === agent.name;
+
+                  // FIX: look up timer record by agentId for this date range
+                  const timerTx = timerTxByAgent[agent._id] ?? null;
+                  const agentProd = (() => {
+                    if (!timerTx) return null;
+                    const acc = timerTx.productiveSeconds ?? 0;
+                    if (timerTx.timerStartEpoch && !timerTx.timerPaused) {
+                      return acc + Math.floor((Date.now() - timerTx.timerStartEpoch) / 1000);
+                    }
+                    return acc;
+                  })();
+
                   return (
                     <button
                       key={agent._id}
@@ -853,9 +844,16 @@ export default function ActivityPage() {
                           <PauseCircle size={9} />{agentHold}
                         </span>
                       )}
-                      <span className="text-indigo-500 dark:text-indigo-400 font-mono">
-                        {formatHms(agentProd || agentTat)}
-                      </span>
+                      {/* FIX: show productive time if available, otherwise TAT with a label */}
+                      {agentProd !== null ? (
+                        <span className="text-emerald-600 dark:text-emerald-400 font-mono flex items-center gap-0.5">
+                          <Zap size={9} />{formatHms(agentProd)}
+                        </span>
+                      ) : agentTat > 0 ? (
+                        <span className="text-indigo-500 dark:text-indigo-400 font-mono flex items-center gap-0.5">
+                          <Clock size={9} />{formatHms(agentTat)}
+                        </span>
+                      ) : null}
                     </button>
                   );
                 })}
@@ -924,11 +922,6 @@ export default function ActivityPage() {
                                     <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">
                                       {tx.startTime}{tx.endTime ? ` → ${tx.endTime}` : ""}
                                     </p>
-                                    {(tx.productiveSeconds ?? 0) > 0 && (
-                                      <p className="text-[10px] text-cyan-500 dark:text-cyan-400 flex items-center gap-0.5 justify-end mt-0.5">
-                                        <Timer size={9} />{formatHms(tx.productiveSeconds)}
-                                      </p>
-                                    )}
                                   </div>
                                 </div>
 
@@ -977,7 +970,7 @@ export default function ActivityPage() {
               </div>
             )}
 
-            {/* Bottom summary */}
+            {/* Bottom summary — FIX: productive time is now accurate */}
             {!loading && filtered.length > 0 && (
               <div className="mt-8 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl px-5 py-4">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
@@ -992,8 +985,20 @@ export default function ActivityPage() {
                     <p className="text-[11px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide mt-0.5">Total TAT</p>
                   </div>
                   <div>
+                    {/* FIX: show productive time only for agents visible in the current filter */}
                     <p className="text-lg font-bold text-cyan-600 dark:text-cyan-400 font-mono">
-                      {formatHms(filtered.reduce((s, t) => s + (t.productiveSeconds ?? 0), 0))}
+                      {(() => {
+                        if (filterAgent === "all") return formatHms(totalProductiveSec);
+                        const agent     = agents.find(a => a.name === filterAgent);
+                        if (!agent) return "—";
+                        const timerTx = timerTxByAgent[agent._id] ?? null;
+                        if (!timerTx) return "—";
+                        const acc = timerTx.productiveSeconds ?? 0;
+                        if (timerTx.timerStartEpoch && !timerTx.timerPaused) {
+                          return formatHms(acc + Math.floor((Date.now() - timerTx.timerStartEpoch) / 1000));
+                        }
+                        return formatHms(acc);
+                      })()}
                     </p>
                     <p className="text-[11px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide mt-0.5">Productive time</p>
                   </div>
