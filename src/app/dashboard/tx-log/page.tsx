@@ -343,6 +343,9 @@ function toHMS(seconds: number): string {
   return `${h}:${m}:${s}`;
 }
 
+// ─── Drop-in replacement for the ProductivityTimer function in your tx-log page ───
+// Only the component itself changes; all types, helpers, and other components stay the same.
+
 function ProductivityTimer({
   agentId,
   agentName,
@@ -359,6 +362,12 @@ function ProductivityTimer({
 
   // ── End-timer confirmation ──
   const [pendingEnd, setPendingEnd] = useState<EndTimerConfirmation | null>(null);
+
+  // ── Password gate state ──
+  const [showPasswordGate, setShowPasswordGate] = useState(false);
+  const [gatePassword, setGatePassword] = useState("");
+  const [gateError, setGateError] = useState("");
+  const [gateChecking, setGateChecking] = useState(false);
 
   // ── Edit modal ──
   const [showEdit, setShowEdit] = useState(false);
@@ -528,13 +537,43 @@ function ProductivityTimer({
     if (updated) setRecord(updated);
   };
 
-  // ── Edit modal ──
+  // ── Password gate: open gate instead of edit directly ──
   const openEdit = () => {
-    setEditHMS(toHMS(computeDisplaySeconds(record)));
-    setEditError("");
-    setShowEdit(true);
+    setGatePassword("");
+    setGateError("");
+    setShowPasswordGate(true);
   };
 
+  const handleGateSubmit = async () => {
+    if (!gatePassword) { setGateError("Enter your password"); return; }
+    setGateChecking(true);
+    setGateError("");
+    try {
+      const res = await fetch("/api/auth/verify-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: gatePassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setGateError(data.error ?? "Incorrect password");
+        setGateChecking(false);
+        return;
+      }
+      // Password verified — close gate, open edit
+      setShowPasswordGate(false);
+      setGatePassword("");
+      setEditHMS(toHMS(computeDisplaySeconds(record)));
+      setEditError("");
+      setShowEdit(true);
+    } catch {
+      setGateError("Something went wrong. Try again.");
+    } finally {
+      setGateChecking(false);
+    }
+  };
+
+  // ── Edit modal save ──
   const handleEditSave = async () => {
     const secs = parseHMS(editHMS);
     if (secs === null) {
@@ -576,11 +615,11 @@ function ProductivityTimer({
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
           </span>
         )}
-        {/* Edit button — always visible when record exists */}
+        {/* Edit button — always visible when record exists and timer not running */}
         {record && !isRunning && (
           <button
             onClick={openEdit}
-            title="Edit productive time"
+            title="Edit productive time (requires password)"
             className="ml-auto flex items-center gap-1 text-[10px] text-slate-400 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors"
           >
             <Pencil size={11} /> Edit
@@ -736,6 +775,70 @@ function ProductivityTimer({
         </div>
       )}
 
+      {/* ── Password Gate Modal ── */}
+      {showPasswordGate && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 w-[340px] shadow-2xl">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center flex-shrink-0">
+                {/* Lock icon — inline SVG to avoid adding a new import */}
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900 dark:text-zinc-100">
+                  Confirm your identity
+                </h2>
+                <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">
+                  Enter your account password to edit the timer
+                </p>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-xs text-slate-500 dark:text-zinc-400 mb-1.5">
+                Account password
+              </label>
+              <input
+                type="password"
+                value={gatePassword}
+                onChange={(e) => { setGatePassword(e.target.value); setGateError(""); }}
+                placeholder="••••••••"
+                autoFocus
+                onKeyDown={(e) => { if (e.key === "Enter") handleGateSubmit(); }}
+                className="w-full bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-zinc-100 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all"
+              />
+              {gateError && (
+                <p className="mt-1.5 text-xs text-red-500 flex items-center gap-1">
+                  <svg className="w-3 h-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
+                  </svg>
+                  {gateError}
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setShowPasswordGate(false); setGatePassword(""); setGateError(""); }}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 text-sm font-medium hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleGateSubmit}
+                disabled={gateChecking}
+                className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold transition-colors disabled:opacity-50"
+              >
+                {gateChecking ? "Checking…" : "Verify"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Edit modal ── */}
       {showEdit && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 backdrop-blur-sm">
@@ -763,7 +866,7 @@ function ProductivityTimer({
                 value={editHMS}
                 onChange={(e) => { setEditHMS(e.target.value); setEditError(""); }}
                 placeholder="07:30:00"
-                className={`${inputCls} font-mono text-center text-lg tracking-widest`}
+                className="w-full bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-zinc-100 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all font-mono text-center text-lg tracking-widest"
                 autoFocus
                 onKeyDown={(e) => { if (e.key === "Enter") handleEditSave(); }}
               />
@@ -775,11 +878,11 @@ function ProductivityTimer({
             {/* Quick-set buttons */}
             <div className="flex flex-wrap gap-1.5 mb-4">
               {[
-                { label: "7h", secs: 7 * 3600 },
+                { label: "7h",     secs: 7 * 3600 },
                 { label: "7h 30m", secs: 7 * 3600 + 30 * 60 },
-                { label: "8h", secs: 8 * 3600 },
+                { label: "8h",     secs: 8 * 3600 },
                 { label: "8h 30m", secs: 8 * 3600 + 30 * 60 },
-                { label: "9h", secs: 9 * 3600 },
+                { label: "9h",     secs: 9 * 3600 },
               ].map(({ label, secs }) => (
                 <button
                   key={label}
@@ -813,7 +916,6 @@ function ProductivityTimer({
     </div>
   );
 }
-
 
 /* ═══════════════════════════════════════════════════════
    ─── Subtask Row (table inline edit)
