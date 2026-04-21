@@ -311,323 +311,374 @@ const inputSmCls  = "w-full bg-white dark:bg-zinc-800 border border-slate-200 da
 const selectSmCls = "w-full bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-md px-2.5 py-1.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 transition-all";
 
 /* ═══════════════════════════════════════════════════════
-   ─── Productivity Timer (DB-persisted)
+   ─── Productivity Timer (fully DB-driven, no local timer state)
    ═══════════════════════════════════════════════════════ */
 interface ProductivityTimerProps {
   agentId: string;
+  agentName: string;
   date: string;
   onProductivityChange: (seconds: number) => void;
-  bioBreakSeconds: number; 
+  bioBreakSeconds: number;
 }
 
-function ProductivityTimer({ agentId, date, onProductivityChange, bioBreakSeconds }: ProductivityTimerProps) {
-  const [timer, setTimer] = useState<StandaloneTimer>({
-    running: false, paused: false, startEpoch: null, accSeconds: 0,
-  });
+interface TimerRecord {
+  _id: string;
+  productiveSeconds: number;
+  timerStartEpoch: number | null;
+  timerPaused: boolean;
+}
+
+function parseHMS(value: string): number | null {
+  const parts = value.split(":").map(Number);
+  if (parts.length !== 3 || parts.some(isNaN)) return null;
+  const [h, m, s] = parts;
+  if (m >= 60 || s >= 60) return null;
+  return h * 3600 + m * 60 + s;
+}
+
+function toHMS(seconds: number): string {
+  const h = Math.floor(seconds / 3600).toString().padStart(2, "0");
+  const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, "0");
+  const s = (seconds % 60).toString().padStart(2, "0");
+  return `${h}:${m}:${s}`;
+}
+
+function ProductivityTimer({
+  agentId,
+  agentName,
+  date,
+  onProductivityChange,
+  bioBreakSeconds,
+}: ProductivityTimerProps) {
+  // ── DB record (single source of truth) ──
+  const [record, setRecord] = useState<TimerRecord | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // ── Live display tick (purely cosmetic — derived from DB record) ──
+  const tick = useTick(1000);
+
+  // ── End-timer confirmation ──
   const [pendingEnd, setPendingEnd] = useState<EndTimerConfirmation | null>(null);
-  const [display, setDisplay] = useState("00:00:00");
-  const [timerTxId, setTimerTxId] = useState<string | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const saveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const timerRef = useRef(timer);
-  const timerTxIdRef = useRef<string | null>(null);
 
-  useEffect(() => { timerRef.current = timer; }, [timer]);
-  useEffect(() => { timerTxIdRef.current = timerTxId; }, [timerTxId]);
+  // ── Edit modal ──
+  const [showEdit, setShowEdit] = useState(false);
+  const [editHMS, setEditHMS] = useState("00:00:00");
+  const [editError, setEditError] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
 
-  const getTotalSeconds = useCallback((t: StandaloneTimer) => {
-    if (t.running && !t.paused && t.startEpoch) {
-      return t.accSeconds + Math.floor((Date.now() - t.startEpoch) / 1000);
+  // ── Beacon ref ──
+  const recordRef = useRef<TimerRecord | null>(null);
+  useEffect(() => { recordRef.current = record; }, [record]);
+
+  // ── Computed display seconds (derived from DB record + live tick) ──
+  const computeDisplaySeconds = useCallback((r: TimerRecord | null): number => {
+    if (!r) return 0;
+    if (r.timerStartEpoch && !r.timerPaused) {
+      return r.productiveSeconds + Math.floor((Date.now() - r.timerStartEpoch) / 1000);
     }
-    return t.accSeconds;
+    return r.productiveSeconds;
   }, []);
 
-  const persistToDB = useCallback((
-    seconds: number,
-    txId: string | null,
-    startEpoch?: number | null,
-    paused?: boolean,
-  ) => {
-    if (!txId) return;
-    if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
-    saveDebounceRef.current = setTimeout(() => {
-      fetch("/api/kpi/transactions", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: txId,
-          productiveSeconds: seconds,
-          timerStartEpoch: startEpoch ?? null,
-          timerPaused: paused ?? false,
-        }),
-      }).catch(() => {});
-    }, 2000);
-  }, []);
+  // ── Load from DB on mount / agent/date change ──
+  useEffect(() => {
+    setLoading(true);
+    setRecord(null);
 
-  const saveImmediately = useCallback(async (
-    txId: string,
-    seconds: number,
-    startEpoch: number | null,
-    paused: boolean,
-  ) => {
-    if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
-    await fetch("/api/kpi/transactions", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: txId,
-        productiveSeconds: seconds,
-        timerStartEpoch: startEpoch,
-        timerPaused: paused,
-      }),
-    }).catch(() => {});
-  }, []);
+    fetch(`/api/kpi/productivity-timer?agentId=${agentId}&date=${date}`)
+      .then((r) => r.json())
+      .then((d) => {
+        setRecord(d.record ?? null);
+        onProductivityChange(computeDisplaySeconds(d.record ?? null));
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentId, date]);
 
+  // ── Notify parent whenever tick fires or record changes ──
+  useEffect(() => {
+    onProductivityChange(computeDisplaySeconds(record));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick, record]);
+
+  // ── Beacon on unload/hide ──
   const flushBeacon = useCallback(() => {
-    const t = timerRef.current;
-    const txId = timerTxIdRef.current;
-    if (!txId || !t.running || t.paused) return;
-    const total = getTotalSeconds(t);
-    if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
+    const r = recordRef.current;
+    if (!r || !r.timerStartEpoch || r.timerPaused) return;
+    const total = computeDisplaySeconds(r);
     navigator.sendBeacon(
       "/api/kpi/timer-beacon",
       new Blob(
         [JSON.stringify({
-          id: txId,
+          id: r._id,
           productiveSeconds: total,
-          timerStartEpoch: t.startEpoch,
+          timerStartEpoch: r.timerStartEpoch,
           timerPaused: false,
         })],
         { type: "application/json" }
       )
     );
-  }, [getTotalSeconds]);
+  }, [computeDisplaySeconds]);
 
   useEffect(() => {
     window.addEventListener("beforeunload", flushBeacon);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") flushBeacon();
+    });
     return () => window.removeEventListener("beforeunload", flushBeacon);
   }, [flushBeacon]);
 
-  useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === "hidden") flushBeacon();
-    };
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, [flushBeacon]);
+  // ── API helpers ──
+  const apiPatch = useCallback(async (
+    id: string,
+    patch: { productiveSeconds?: number; timerStartEpoch?: number | null; timerPaused?: boolean }
+  ): Promise<TimerRecord | null> => {
+    const res = await fetch("/api/kpi/productivity-timer", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, ...patch }),
+    });
+    if (!res.ok) return null;
+    const d = await res.json();
+    return d.record ?? null;
+  }, []);
 
-  useEffect(() => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-
-    fetch(`/api/kpi/transactions?date=${date}&agentId=${agentId}`)
-      .then(r => r.json())
-      .then(data => {
-        const timerRecord = (data.transactions ?? []).find(
-          (t: Transaction) => t.docType === "__PROD_TIMER__"
-        );
-        if (!timerRecord) {
-          setTimerTxId(null);
-          setTimer({ running: false, paused: false, startEpoch: null, accSeconds: 0 });
-          setDisplay("00:00:00");
-          onProductivityChange(0);
-          return;
-        }
-
-        setTimerTxId(timerRecord._id);
-        const secs = timerRecord.productiveSeconds ?? 0;
-        const savedEpoch = timerRecord.timerStartEpoch ?? null;
-        const savedPaused = timerRecord.timerPaused ?? false;
-
-        if (savedEpoch && !savedPaused) {
-          const totalSecs = secs + Math.floor((Date.now() - savedEpoch) / 1000);
-          setTimer({ running: true, paused: false, startEpoch: savedEpoch, accSeconds: secs });
-          setDisplay(formatTat(totalSecs));
-          onProductivityChange(totalSecs);
-        } else if (savedPaused && secs > 0) {
-          setTimer({ running: true, paused: true, startEpoch: null, accSeconds: secs });
-          setDisplay(formatTat(secs));
-          onProductivityChange(secs);
-        } else {
-          setTimer({ running: false, paused: false, startEpoch: null, accSeconds: secs });
-          setDisplay(formatTat(secs));
-          onProductivityChange(secs);
-        }
-      })
-      .catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agentId, date]);
-
-  useEffect(() => {
-    if (timer.running && !timer.paused) {
-      intervalRef.current = setInterval(() => {
-        const total = getTotalSeconds(timer);
-        setDisplay(formatTat(total));
-        onProductivityChange(total);
-        persistToDB(timer.accSeconds, timerTxId, timer.startEpoch, false);
-      }, 1000);
-    } else {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      const total = getTotalSeconds(timer);
-      setDisplay(formatTat(total));
-      onProductivityChange(total);
-    }
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timer, timerTxId]);
-
-  const ensureTimerRecord = useCallback(async (): Promise<string | null> => {
-    if (timerTxId) return timerTxId;
-    const res = await fetch("/api/kpi/transactions", {
+  const ensureRecord = useCallback(async (): Promise<TimerRecord | null> => {
+    if (record) return record;
+    const res = await fetch("/api/kpi/productivity-timer", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        agentId,
-        agentName: "__timer__",
-        docType: "__PROD_TIMER__",
-        companyName: "__timer__",
-        volume: 1,
-        date,
-        status: "PENDING",
-        startEpoch: Date.now(),
-        taskCategory: "Non-Production",
-        productiveSeconds: 0,
-      }),
+      body: JSON.stringify({ agentId, agentName, date }),
     });
-    if (res.ok) {
-      const d = await res.json();
-      setTimerTxId(d.transaction._id);
-      return d.transaction._id;
-    }
-    return null;
-  }, [timerTxId, agentId, date]);
+    if (!res.ok) return null;
+    const d = await res.json();
+    setRecord(d.record);
+    return d.record ?? null;
+  }, [record, agentId, agentName, date]);
 
+  // ── Timer actions ──
   const handleStart = async () => {
-    const txId = await ensureTimerRecord();
+    const r = await ensureRecord();
+    if (!r) return;
     const epoch = Date.now();
-    setTimer({ running: true, paused: false, startEpoch: epoch, accSeconds: 0 });
-    if (txId) await saveImmediately(txId, 0, epoch, false);
+    const updated = await apiPatch(r._id, {
+      productiveSeconds: 0,
+      timerStartEpoch: epoch,
+      timerPaused: false,
+    });
+    if (updated) setRecord(updated);
   };
 
   const handlePause = async () => {
-    if (!timerTxId) return;
-    const acc = getTotalSeconds(timer);
-    setTimer({ running: true, paused: true, startEpoch: null, accSeconds: acc });
-    await saveImmediately(timerTxId, acc, null, true);
+    if (!record) return;
+    const acc = computeDisplaySeconds(record);
+    const updated = await apiPatch(record._id, {
+      productiveSeconds: acc,
+      timerStartEpoch: null,
+      timerPaused: true,
+    });
+    if (updated) setRecord(updated);
   };
 
   const handleResume = async () => {
-    if (!timerTxId) return;
+    if (!record) return;
     const epoch = Date.now();
-    setTimer(prev => ({ ...prev, paused: false, startEpoch: epoch }));
-    await saveImmediately(timerTxId, timer.accSeconds, epoch, false);
+    const updated = await apiPatch(record._id, {
+      timerStartEpoch: epoch,
+      timerPaused: false,
+    });
+    if (updated) setRecord(updated);
   };
 
   const handleEnd = () => {
-    const total = getTotalSeconds(timer);
+    if (!record) return;
+    const total = computeDisplaySeconds(record);
     const net = Math.max(0, total - bioBreakSeconds);
     setPendingEnd({ productiveSeconds: total, bioBreakSeconds, netSeconds: net });
   };
 
   const confirmEnd = async () => {
-    if (!pendingEnd || !timerTxId) return;
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    setTimer({ running: false, paused: false, startEpoch: null, accSeconds: pendingEnd.netSeconds });
-    setDisplay(formatTat(pendingEnd.netSeconds));
-    onProductivityChange(pendingEnd.netSeconds);
-    await saveImmediately(timerTxId, pendingEnd.netSeconds, null, false);
+    if (!record || !pendingEnd) return;
+    const updated = await apiPatch(record._id, {
+      productiveSeconds: pendingEnd.netSeconds,
+      timerStartEpoch: null,
+      timerPaused: false,
+    });
+    if (updated) setRecord(updated);
     setPendingEnd(null);
   };
 
-  const cancelEnd = () => setPendingEnd(null);
-
   const handleReset = async () => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    setTimer({ running: false, paused: false, startEpoch: null, accSeconds: 0 });
-    onProductivityChange(0);
-    setDisplay("00:00:00");
-    if (timerTxId) await saveImmediately(timerTxId, 0, null, false);
+    if (!record) return;
+    const updated = await apiPatch(record._id, {
+      productiveSeconds: 0,
+      timerStartEpoch: null,
+      timerPaused: false,
+    });
+    if (updated) setRecord(updated);
   };
 
   const handleContinue = async () => {
-    if (!timerTxId) return;
+    if (!record) return;
     const epoch = Date.now();
-    setTimer(prev => ({ ...prev, running: true, paused: false, startEpoch: epoch }));
-    await saveImmediately(timerTxId, timer.accSeconds, epoch, false);
+    const updated = await apiPatch(record._id, {
+      timerStartEpoch: epoch,
+      timerPaused: false,
+    });
+    if (updated) setRecord(updated);
   };
 
-  const isIdle    = !timer.running && !timer.paused && timer.accSeconds === 0;
-  const isRunning = timer.running && !timer.paused;
-  const isPaused  = timer.paused;
-  const isDone    = !timer.running && !timer.paused && timer.accSeconds > 0;
+  // ── Edit modal ──
+  const openEdit = () => {
+    setEditHMS(toHMS(computeDisplaySeconds(record)));
+    setEditError("");
+    setShowEdit(true);
+  };
+
+  const handleEditSave = async () => {
+    const secs = parseHMS(editHMS);
+    if (secs === null) {
+      setEditError("Enter a valid time HH:MM:SS (e.g. 07:30:00)");
+      return;
+    }
+    setEditSaving(true);
+    const r = await ensureRecord();
+    if (!r) { setEditSaving(false); return; }
+    const updated = await apiPatch(r._id, {
+      productiveSeconds: secs,
+      timerStartEpoch: null,
+      timerPaused: false,
+    });
+    setEditSaving(false);
+    if (updated) { setRecord(updated); setShowEdit(false); }
+  };
+
+  // ── Derived display state ──
+  const displaySeconds = computeDisplaySeconds(record);
+  const display = formatTat(displaySeconds);
+
+  const isIdle    = !record || (!record.timerStartEpoch && !record.timerPaused && record.productiveSeconds === 0);
+  const isRunning = !!record?.timerStartEpoch && !record?.timerPaused;
+  const isPaused  = !!record?.timerPaused;
+  const isDone    = !record?.timerStartEpoch && !record?.timerPaused && (record?.productiveSeconds ?? 0) > 0;
 
   return (
     <div className="border-b border-slate-100 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+      {/* Header */}
       <div className="px-4 pt-4 pb-2 flex items-center gap-2">
         <Timer size={12} className="text-emerald-500" />
-        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Productivity Timer</p>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">
+          Productivity Timer
+        </p>
         {isRunning && (
           <span className="relative flex h-2 w-2 ml-auto">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
           </span>
         )}
-      </div>
-      <div className="px-4 pb-4 space-y-3">
-        <div className={`rounded-xl border px-4 py-3 text-center transition-all ${
-          isRunning ? "bg-emerald-50 border-emerald-200" :
-          isPaused  ? "bg-amber-50 border-amber-200" :
-          isDone    ? "bg-indigo-50 border-indigo-200" :
-                      "bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700"
-        }`}>
-          <p className={`font-mono text-2xl font-bold tracking-widest ${
-            isRunning ? "text-emerald-600" :
-            isPaused  ? "text-amber-500" :
-            isDone    ? "text-indigo-600" :
-                        "text-slate-400 dark:text-zinc-500"
-          }`}>{display}</p>
-          <p className="text-[10px] mt-1 uppercase tracking-widest font-semibold text-slate-400 dark:text-zinc-500">
-            {isRunning ? "Running" : isPaused ? "Paused" : isDone ? "Total Time" : "Ready"}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {isIdle && (
-            <button onClick={handleStart} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors">
-              <Play size={12} /> Start
-            </button>
-          )}
-          {isRunning && (
-            <>
-              <button onClick={handlePause} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-600 text-xs font-semibold hover:bg-amber-100 transition-colors">
-                <Pause size={12} /> Pause
-              </button>
-              <button onClick={handleEnd} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors">
-                <Square size={12} /> End
-              </button>
-            </>
-          )}
-          {isPaused && (
-            <>
-              <button onClick={handleResume} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 text-xs font-semibold hover:bg-emerald-100 transition-colors">
-                <Play size={12} /> Resume
-              </button>
-              <button onClick={handleEnd} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors">
-                <Square size={12} /> End
-              </button>
-            </>
-          )}
-          {isDone && (
-            <>
-              <button onClick={handleReset} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-zinc-400 text-xs font-semibold hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors">
-                <Plus size={12} className="rotate-45" /> Reset
-              </button>
-              <button onClick={handleContinue} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 text-xs font-semibold hover:bg-emerald-100 transition-colors">
-                <Play size={12} /> Continue
-              </button>
-            </>
-          )}
-        </div>
+        {/* Edit button — always visible when record exists */}
+        {record && !isRunning && (
+          <button
+            onClick={openEdit}
+            title="Edit productive time"
+            className="ml-auto flex items-center gap-1 text-[10px] text-slate-400 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors"
+          >
+            <Pencil size={11} /> Edit
+          </button>
+        )}
       </div>
 
+      <div className="px-4 pb-4 space-y-3">
+        {/* Clock display */}
+        <div
+          className={`rounded-xl border px-4 py-3 text-center transition-all ${
+            loading        ? "bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700" :
+            isRunning      ? "bg-emerald-50 border-emerald-200" :
+            isPaused       ? "bg-amber-50 border-amber-200" :
+            isDone         ? "bg-indigo-50 border-indigo-200" :
+                             "bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700"
+          }`}
+        >
+          <p
+            className={`font-mono text-2xl font-bold tracking-widest ${
+              loading   ? "text-slate-300 dark:text-zinc-600" :
+              isRunning ? "text-emerald-600" :
+              isPaused  ? "text-amber-500" :
+              isDone    ? "text-indigo-600" :
+                          "text-slate-400 dark:text-zinc-500"
+            }`}
+          >
+            {loading ? "—:——:——" : display}
+          </p>
+          <p className="text-[10px] mt-1 uppercase tracking-widest font-semibold text-slate-400 dark:text-zinc-500">
+            {loading ? "Loading…" : isRunning ? "Running" : isPaused ? "Paused" : isDone ? "Total Time" : "Ready"}
+          </p>
+        </div>
+
+        {/* Controls */}
+        {!loading && (
+          <div className="flex gap-2">
+            {isIdle && (
+              <button
+                onClick={handleStart}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors"
+              >
+                <Play size={12} /> Start
+              </button>
+            )}
+            {isRunning && (
+              <>
+                <button
+                  onClick={handlePause}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-600 text-xs font-semibold hover:bg-amber-100 transition-colors"
+                >
+                  <Pause size={12} /> Pause
+                </button>
+                <button
+                  onClick={handleEnd}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors"
+                >
+                  <Square size={12} /> End
+                </button>
+              </>
+            )}
+            {isPaused && (
+              <>
+                <button
+                  onClick={handleResume}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 text-xs font-semibold hover:bg-emerald-100 transition-colors"
+                >
+                  <Play size={12} /> Resume
+                </button>
+                <button
+                  onClick={handleEnd}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors"
+                >
+                  <Square size={12} /> End
+                </button>
+              </>
+            )}
+            {isDone && (
+              <>
+                <button
+                  onClick={handleReset}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-zinc-400 text-xs font-semibold hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors"
+                >
+                  <Plus size={12} className="rotate-45" /> Reset
+                </button>
+                <button
+                  onClick={handleContinue}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 text-xs font-semibold hover:bg-emerald-100 transition-colors"
+                >
+                  <Play size={12} /> Continue
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── End confirmation modal ── */}
       {pendingEnd && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 backdrop-blur-sm">
           <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 w-[360px] shadow-2xl">
@@ -636,33 +687,124 @@ function ProductivityTimer({ agentId, date, onProductivityChange, bioBreakSecond
                 <Timer size={15} className="text-indigo-500" />
               </div>
               <div>
-                <h2 className="text-sm font-semibold text-slate-900 dark:text-zinc-100">End Productivity Timer?</h2>
-                <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">Bio break time will be deducted</p>
+                <h2 className="text-sm font-semibold text-slate-900 dark:text-zinc-100">
+                  End Productivity Timer?
+                </h2>
+                <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">
+                  Bio break time will be deducted
+                </p>
               </div>
             </div>
             <div className="space-y-2 mb-5">
               <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200">
                 <span className="text-xs text-emerald-700 font-medium">Total Timer</span>
-                <span className="text-xs font-mono font-bold text-emerald-600">{formatTat(pendingEnd.productiveSeconds)}</span>
+                <span className="text-xs font-mono font-bold text-emerald-600">
+                  {formatTat(pendingEnd.productiveSeconds)}
+                </span>
               </div>
               <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-amber-50 border border-amber-200">
                 <span className="text-xs text-amber-700 font-medium flex items-center gap-1">
                   <span>🚻</span> Bio Break Time
                 </span>
-                <span className="text-xs font-mono font-bold text-amber-600">− {formatTat(pendingEnd.bioBreakSeconds)}</span>
+                <span className="text-xs font-mono font-bold text-amber-600">
+                  − {formatTat(pendingEnd.bioBreakSeconds)}
+                </span>
               </div>
               <div className="h-px bg-slate-200 dark:bg-zinc-700 mx-1" />
               <div className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-indigo-50 border border-indigo-200">
                 <span className="text-xs text-indigo-700 font-semibold">Net Productive Time</span>
-                <span className="text-sm font-mono font-bold text-indigo-600">{formatTat(pendingEnd.netSeconds)}</span>
+                <span className="text-sm font-mono font-bold text-indigo-600">
+                  {formatTat(pendingEnd.netSeconds)}
+                </span>
               </div>
             </div>
             <div className="flex gap-2">
-              <button onClick={cancelEnd} className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 text-sm font-medium hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors">
+              <button
+                onClick={() => setPendingEnd(null)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 text-sm font-medium hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors"
+              >
                 Cancel
               </button>
-              <button onClick={confirmEnd} className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors">
+              <button
+                onClick={confirmEnd}
+                className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors"
+              >
                 Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit modal ── */}
+      {showEdit && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 w-[340px] shadow-2xl">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center flex-shrink-0">
+                <Pencil size={15} className="text-indigo-500" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900 dark:text-zinc-100">
+                  Edit Productive Time
+                </h2>
+                <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">
+                  Enter the correct time in HH:MM:SS
+                </p>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-xs text-slate-500 dark:text-zinc-400 mb-1.5">
+                Productive time (HH:MM:SS)
+              </label>
+              <input
+                type="text"
+                value={editHMS}
+                onChange={(e) => { setEditHMS(e.target.value); setEditError(""); }}
+                placeholder="07:30:00"
+                className={`${inputCls} font-mono text-center text-lg tracking-widest`}
+                autoFocus
+                onKeyDown={(e) => { if (e.key === "Enter") handleEditSave(); }}
+              />
+              {editError && (
+                <p className="mt-1.5 text-xs text-red-500">{editError}</p>
+              )}
+            </div>
+
+            {/* Quick-set buttons */}
+            <div className="flex flex-wrap gap-1.5 mb-4">
+              {[
+                { label: "7h", secs: 7 * 3600 },
+                { label: "7h 30m", secs: 7 * 3600 + 30 * 60 },
+                { label: "8h", secs: 8 * 3600 },
+                { label: "8h 30m", secs: 8 * 3600 + 30 * 60 },
+                { label: "9h", secs: 9 * 3600 },
+              ].map(({ label, secs }) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => { setEditHMS(toHMS(secs)); setEditError(""); }}
+                  className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 text-[11px] font-semibold hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-600 transition-colors"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowEdit(false)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 text-sm font-medium hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditSave}
+                disabled={editSaving}
+                className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors disabled:opacity-50"
+              >
+                {editSaving ? "Saving…" : "Save"}
               </button>
             </div>
           </div>
@@ -671,6 +813,7 @@ function ProductivityTimer({ agentId, date, onProductivityChange, bioBreakSecond
     </div>
   );
 }
+
 
 /* ═══════════════════════════════════════════════════════
    ─── Subtask Row (table inline edit)
@@ -2221,6 +2364,7 @@ const res = await fetch("/api/kpi/transactions", {
              <BioBreakPanel selectedAgent={selectedAgent} date={date} onBioBreakChange={setTotalBioBreakSeconds} />
               <ProductivityTimer
                 agentId={selectedAgent._id}
+                agentName={selectedAgent.name}
                 date={date}
                 onProductivityChange={setTimerProductiveSeconds}
                 bioBreakSeconds={totalBioBreakSeconds}
