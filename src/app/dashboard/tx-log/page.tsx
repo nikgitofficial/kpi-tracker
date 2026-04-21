@@ -2149,12 +2149,31 @@ const res = await fetch("/api/kpi/transactions", {
                     </select>
                     {selectedAgent && <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">{formattedDate}</p>}
                   </div>
+   
                 </div>
+                
               ) : (
                 <p className="text-slate-400 dark:text-zinc-500 text-sm">No agents — click + to add one</p>
               )}
+              
             </div>
+            
+            
           </div>
+   {/* Marquee — sits between agent and export buttons */}
+<div className="flex-1 overflow-hidden rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-1">
+  <div
+    className="whitespace-nowrap text-[11px] font-semibold text-amber-700 dark:text-amber-300 flex items-center gap-6"
+    style={{ animation: "marquee 18s linear infinite" }}
+  >
+    <span>⚠️ Select your name before starting logs</span>
+    <span>•</span>
+    <span>⏱ End your timer after your shift to calculate productivity</span>
+    <span>•</span>
+    <span>📊 Ensure all entries are accurate before submission</span>
+  </div>
+</div>
+          
           <div className="flex items-center gap-2">
             <input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm text-slate-700 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
             <button onClick={() => setDate(today())} className="px-3 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-500 text-xs font-semibold hover:bg-indigo-100 transition-colors">Today</button>

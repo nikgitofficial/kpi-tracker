@@ -186,3 +186,8 @@ input:-webkit-autofill:focus {
   pointer-events: none;
   border-radius: inherit;
 }
+
+@keyframes marquee {
+  0%   { transform: translateX(0%); }
+  100% { transform: translateX(-50%); }
+}
