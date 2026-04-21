@@ -463,7 +463,7 @@ function ProductivityTimer({ agentId, date, onProductivityChange, bioBreakSecond
         const total = getTotalSeconds(timer);
         setDisplay(formatTat(total));
         onProductivityChange(total);
-        persistToDB(total, timerTxId, timer.startEpoch, false);
+        persistToDB(timer.accSeconds, timerTxId, timer.startEpoch, false);
       }, 1000);
     } else {
       if (intervalRef.current) clearInterval(intervalRef.current);
