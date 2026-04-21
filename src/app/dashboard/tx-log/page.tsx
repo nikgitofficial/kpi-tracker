@@ -2160,7 +2160,8 @@ const res = await fetch("/api/kpi/transactions", {
             
             
           </div>
-   {/* Marquee — sits between agent and export buttons */}
+   
+{/* Marquee */}
 <div className="flex-1 overflow-hidden rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-1">
   <div
     className="whitespace-nowrap text-[11px] font-semibold text-amber-700 dark:text-amber-300 flex items-center gap-6"
@@ -2170,7 +2171,9 @@ const res = await fetch("/api/kpi/transactions", {
     <span>•</span>
     <span>⏱ End your timer after your shift to calculate productivity</span>
     <span>•</span>
-    <span>📊 Ensure all entries are accurate before submission</span>
+    <span>☕ Track your Bio Breaks accurately during your shift</span>
+    <span>•</span>
+    <span>📊 Review all entries before submission</span>
   </div>
 </div>
           
