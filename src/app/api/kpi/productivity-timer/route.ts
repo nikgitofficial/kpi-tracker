@@ -26,7 +26,8 @@ export async function GET(req: NextRequest) {
       docType: "__PROD_TIMER__",
     }).lean();
 
-    return NextResponse.json({ record: record ?? null });
+    // Return server timestamp so client can correct for clock skew
+    return NextResponse.json({ record: record ?? null, serverNow: Date.now() });
   } catch (err) {
     console.error("[GET /api/kpi/productivity-timer]", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

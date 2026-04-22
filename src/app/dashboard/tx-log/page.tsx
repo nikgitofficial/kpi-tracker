@@ -346,6 +346,9 @@ function toHMS(seconds: number): string {
 // ─── Drop-in replacement for the ProductivityTimer function in your tx-log page ───
 // Only the component itself changes; all types, helpers, and other components stay the same.
 
+// ─── Drop-in replacement for the ProductivityTimer function in your tx-log page ───
+// Only the component itself changes; all types, helpers, and other components stay the same.
+
 function ProductivityTimer({
   agentId,
   agentName,
@@ -356,6 +359,11 @@ function ProductivityTimer({
   // ── DB record (single source of truth) ──
   const [record, setRecord] = useState<TimerRecord | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // ── Clock-skew offset: clientTime - serverTime (ms). Used so that
+  //    timerStartEpoch (written by the server's clock) is compared against
+  //    the same clock. Prevents drift when thousands of agents refresh. ──
+  const [serverOffset, setServerOffset] = useState(0);
 
   // ── Live display tick (purely cosmetic — derived from DB record) ──
   const tick = useTick(1000);
@@ -379,11 +387,19 @@ function ProductivityTimer({
   const recordRef = useRef<TimerRecord | null>(null);
   useEffect(() => { recordRef.current = record; }, [record]);
 
+  // ── serverOffset ref so beacon always has latest value ──
+  const serverOffsetRef = useRef(0);
+  useEffect(() => { serverOffsetRef.current = serverOffset; }, [serverOffset]);
+
   // ── Computed display seconds (derived from DB record + live tick) ──
-  const computeDisplaySeconds = useCallback((r: TimerRecord | null): number => {
+  // Uses serverOffset to correct for clock skew between client and server.
+  // timerStartEpoch is stored using Date.now() on the client at the moment
+  // the user clicks Start/Resume, so we adjust "now" by the same offset.
+  const computeDisplaySeconds = useCallback((r: TimerRecord | null, offset = 0): number => {
     if (!r) return 0;
     if (r.timerStartEpoch && !r.timerPaused) {
-      return r.productiveSeconds + Math.floor((Date.now() - r.timerStartEpoch) / 1000);
+      const adjustedNow = Date.now() - offset;
+      return r.productiveSeconds + Math.floor((adjustedNow - r.timerStartEpoch) / 1000);
     }
     return r.productiveSeconds;
   }, []);
@@ -393,11 +409,26 @@ function ProductivityTimer({
     setLoading(true);
     setRecord(null);
 
+    const clientBefore = Date.now();
+
     fetch(`/api/kpi/productivity-timer?agentId=${agentId}&date=${date}`)
       .then((r) => r.json())
       .then((d) => {
+        const clientAfter = Date.now();
+
+        // Calculate clock-skew offset so elapsed time is always accurate
+        // even if the client clock drifts from the server clock.
+        let offset = 0;
+        if (d.serverNow) {
+          const roundTrip = clientAfter - clientBefore;
+          const serverEstimate = d.serverNow + roundTrip / 2;
+          offset = clientAfter - serverEstimate;
+          setServerOffset(offset);
+          serverOffsetRef.current = offset;
+        }
+
         setRecord(d.record ?? null);
-        onProductivityChange(computeDisplaySeconds(d.record ?? null));
+        onProductivityChange(computeDisplaySeconds(d.record ?? null, offset));
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -406,7 +437,7 @@ function ProductivityTimer({
 
   // ── Notify parent whenever tick fires or record changes ──
   useEffect(() => {
-    onProductivityChange(computeDisplaySeconds(record));
+    onProductivityChange(computeDisplaySeconds(record, serverOffset));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick, record]);
 
@@ -414,14 +445,14 @@ function ProductivityTimer({
   const flushBeacon = useCallback(() => {
     const r = recordRef.current;
     if (!r || !r.timerStartEpoch || r.timerPaused) return;
-    const total = computeDisplaySeconds(r);
+    const total = computeDisplaySeconds(r, serverOffsetRef.current);
     navigator.sendBeacon(
       "/api/kpi/timer-beacon",
       new Blob(
         [JSON.stringify({
           id: r._id,
           productiveSeconds: total,
-          timerStartEpoch: r.timerStartEpoch,
+          timerStartEpoch: r.timerStartEpoch, // sent so server can guard against stale beacons
           timerPaused: false,
         })],
         { type: "application/json" }
@@ -430,11 +461,22 @@ function ProductivityTimer({
   }, [computeDisplaySeconds]);
 
   useEffect(() => {
-    window.addEventListener("beforeunload", flushBeacon);
-    document.addEventListener("visibilitychange", () => {
+    const handleUnload = () => flushBeacon();
+
+    const handleVisibility = () => {
       if (document.visibilityState === "hidden") flushBeacon();
-    });
-    return () => window.removeEventListener("beforeunload", flushBeacon);
+    };
+
+    window.addEventListener("beforeunload", handleUnload);
+    // pagehide covers iOS Safari where beforeunload is unreliable
+    window.addEventListener("pagehide", handleUnload);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleUnload);
+      window.removeEventListener("pagehide", handleUnload);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, [flushBeacon]);
 
   // ── API helpers ──
@@ -469,9 +511,14 @@ function ProductivityTimer({
   const handleStart = async () => {
     const r = await ensureRecord();
     if (!r) return;
-    const epoch = Date.now();
+    // Use server-offset-adjusted epoch so the start point aligns with the
+    // server clock. This ensures that after a refresh, elapsed time is
+    // computed consistently regardless of client clock skew.
+    const epoch = Date.now() - serverOffsetRef.current;
     const updated = await apiPatch(r._id, {
-      productiveSeconds: 0,
+      // Do NOT reset productiveSeconds here — only set the start epoch.
+      // Resetting would wipe any time already accumulated (e.g. from a
+      // previous session that was in isDone state).
       timerStartEpoch: epoch,
       timerPaused: false,
     });
@@ -480,7 +527,7 @@ function ProductivityTimer({
 
   const handlePause = async () => {
     if (!record) return;
-    const acc = computeDisplaySeconds(record);
+    const acc = computeDisplaySeconds(record, serverOffset);
     const updated = await apiPatch(record._id, {
       productiveSeconds: acc,
       timerStartEpoch: null,
@@ -491,7 +538,7 @@ function ProductivityTimer({
 
   const handleResume = async () => {
     if (!record) return;
-    const epoch = Date.now();
+    const epoch = Date.now() - serverOffsetRef.current;
     const updated = await apiPatch(record._id, {
       timerStartEpoch: epoch,
       timerPaused: false,
@@ -501,7 +548,7 @@ function ProductivityTimer({
 
   const handleEnd = () => {
     if (!record) return;
-    const total = computeDisplaySeconds(record);
+    const total = computeDisplaySeconds(record, serverOffset);
     const net = Math.max(0, total - bioBreakSeconds);
     setPendingEnd({ productiveSeconds: total, bioBreakSeconds, netSeconds: net });
   };
@@ -529,7 +576,7 @@ function ProductivityTimer({
 
   const handleContinue = async () => {
     if (!record) return;
-    const epoch = Date.now();
+    const epoch = Date.now() - serverOffsetRef.current;
     const updated = await apiPatch(record._id, {
       timerStartEpoch: epoch,
       timerPaused: false,
@@ -563,7 +610,7 @@ function ProductivityTimer({
       // Password verified — close gate, open edit
       setShowPasswordGate(false);
       setGatePassword("");
-      setEditHMS(toHMS(computeDisplaySeconds(record)));
+      setEditHMS(toHMS(computeDisplaySeconds(record, serverOffset)));
       setEditError("");
       setShowEdit(true);
     } catch {
@@ -593,7 +640,7 @@ function ProductivityTimer({
   };
 
   // ── Derived display state ──
-  const displaySeconds = computeDisplaySeconds(record);
+  const displaySeconds = computeDisplaySeconds(record, serverOffset);
   const display = formatTat(displaySeconds);
 
   const isIdle    = !record || (!record.timerStartEpoch && !record.timerPaused && record.productiveSeconds === 0);
