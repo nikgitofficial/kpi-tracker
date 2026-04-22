@@ -983,6 +983,7 @@ interface SubtaskRowProps {
 function SubtaskRow({ subtask, index, txId, docTypes, parentCategory, onUpdated, onDeleted }: SubtaskRowProps) {
   const [editing,   setEditing]   = useState(false);
   const [stDocType, setStDocType] = useState(subtask.docType);
+  const [stNumber,  setStNumber]  = useState(String(subtask.number ?? ""));
   const [stStatus,  setStStatus]  = useState(subtask.status);
   const [stNotes,   setStNotes]   = useState(subtask.notes ?? "");
   const [saving,    setSaving]    = useState(false);
@@ -1030,16 +1031,17 @@ useEffect(() => {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        id: txId,
-        subtaskAction: "UPDATE",
-        subtaskId: subtask._id,
-        subtask: {
-          docType:      stDocType,
-          notes:        stNotes.trim() || undefined,
-          status:       stStatus,
-          taskCategory: subtaskCategory,
-        },
-      }),
+  id: txId,
+  subtaskAction: "UPDATE",
+  subtaskId: subtask._id,
+  subtask: {
+    docType:      stDocType,
+    number:       stNumber ? Number(stNumber) : undefined,
+    notes:        stNotes.trim() || undefined,
+    status:       stStatus,
+    taskCategory: subtaskCategory,
+  },
+}),
     });
     setSaving(false);
     if (res.ok) { const d = await res.json(); onUpdated(d.transaction); setEditing(false); }
@@ -1057,39 +1059,49 @@ useEffect(() => {
   };
 
   if (editing) {
-    return (
-      <tr className="border-b border-indigo-100 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/20">
-        <td className="pl-10 pr-2 py-2 text-slate-400 text-xs">↳</td>
-        <td className="px-2 py-2">
-          <select value={stDocType} onChange={e => setStDocType(e.target.value)} className={selectSmCls}>
-            {docTypes.map(dt => <option key={dt._id} value={dt.name}>{dt.name}</option>)}
-          </select>
-        </td>
-        <td className="px-2 py-2">
-          <CategoryBadge category={docTypes.find(dt => dt.name === stDocType)?.taskCategory ?? subtask.taskCategory} />
-        </td>
-        <td className="px-2 py-2">
-          <select value={stStatus} onChange={e => setStStatus(e.target.value as Subtask["status"])} className={selectSmCls}>
-            <option value="COMPLETION">Completion</option>
-            <option value="PENDING">Pending</option>
-            <option value="ESCALATION">Escalation</option>
-            <option value="HOLD">Hold</option>
-          </select>
-        </td>
-        <td className="px-2 py-2">
+  return (
+    <tr className="border-b border-indigo-100 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/20">
+      <td className="pl-10 pr-2 py-2 text-slate-400 text-xs">↳</td>
+      <td className="px-2 py-2">
+        <select value={stDocType} onChange={e => setStDocType(e.target.value)} className={selectSmCls}>
+          {docTypes.map(dt => <option key={dt._id} value={dt.name}>{dt.name}</option>)}
+        </select>
+      </td>
+      <td className="px-2 py-2">
+        <CategoryBadge category={docTypes.find(dt => dt.name === stDocType)?.taskCategory ?? subtask.taskCategory} />
+      </td>
+      <td className="px-2 py-2">
+        <select value={stStatus} onChange={e => setStStatus(e.target.value as Subtask["status"])} className={selectSmCls}>
+          <option value="COMPLETION">Completion</option>
+          <option value="PENDING">Pending</option>
+          <option value="ESCALATION">Escalation</option>
+          <option value="HOLD">Hold</option>
+        </select>
+      </td>
+      <td className="px-2 py-2">
+        <div className="flex gap-1.5">
+          <input
+            type="number"
+            min="1"
+            value={stNumber}
+            onChange={e => setStNumber(e.target.value)}
+            placeholder="Vol/Num"
+            className={`${inputSmCls} w-20`}
+          />
           <input value={stNotes} onChange={e => setStNotes(e.target.value)} placeholder="Notes…" className={inputSmCls} />
-        </td>
-        <td className="px-2 py-2">
-          <div className="flex items-center gap-1.5">
-            <button onClick={handleSave} disabled={saving} className="px-2 py-1 rounded-md bg-indigo-600 text-white text-[10px] font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-              {saving ? "…" : "Save"}
-            </button>
-            <button onClick={() => setEditing(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200"><X size={12} /></button>
-          </div>
-        </td>
-      </tr>
-    );
-  }
+        </div>
+      </td>
+      <td className="px-2 py-2">
+        <div className="flex items-center gap-1.5">
+          <button onClick={handleSave} disabled={saving} className="px-2 py-1 rounded-md bg-indigo-600 text-white text-[10px] font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors">
+            {saving ? "…" : "Save"}
+          </button>
+          <button onClick={() => setEditing(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200"><X size={12} /></button>
+        </div>
+      </td>
+    </tr>
+  );
+}
 
   return (
     <>
@@ -1107,9 +1119,16 @@ useEffect(() => {
         </td>
 
         {/* Type of Task */}
-        <td className="px-4 py-2 text-slate-500 dark:text-zinc-400 text-xs">
-          {subtask.docType}
-        </td>
+<td className="px-4 py-2 text-slate-500 dark:text-zinc-400 text-xs">
+  <div className="flex items-center gap-1.5">
+    <span>{subtask.docType}</span>
+    {subtask.number != null && (
+      <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-[9px] font-bold text-slate-500 dark:text-zinc-400">
+        ×{subtask.number}
+      </span>
+    )}
+  </div>
+</td>
 
         {/* Category */}
         <td className="px-4 py-2">
