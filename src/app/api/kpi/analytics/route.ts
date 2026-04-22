@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { connectDB } from "@/lib/db";
 import Transaction from "@/models/Transaction";
+import ProductivityTimer from "@/models/ProductivityTimer";
 
 // GET /api/kpi/analytics?from=YYYY-MM-DD&to=YYYY-MM-DD
 export async function GET(req: NextRequest) {
@@ -21,21 +22,45 @@ export async function GET(req: NextRequest) {
     query.date = from;
   }
 
-  const txs = await Transaction.find(query).lean();
+  // Fetch regular transactions (filter out __PROD_TIMER__)
+  const txs = await Transaction.find({ ...query, docType: { $ne: "__PROD_TIMER__" } }).lean();
+
+  // Fetch timer records for productive time calculation
+  const timerQuery: Record<string, unknown> = { ownerEmail: session.user.email };
+  if (from && to) {
+    timerQuery.date = { $gte: from, $lte: to };
+  } else if (from) {
+    timerQuery.date = from;
+  }
+  
+  const timerRecords = await ProductivityTimer.find(timerQuery).lean();
+
+  // Calculate total productive seconds with live running time
+  const now = Date.now();
+  let totalProductiveSeconds = 0;
+  const agentProductiveSeconds: Record<string, number> = {};
+
+  for (const timer of timerRecords) {
+    let secs = timer.productiveSeconds ?? 0;
+    // If timer is actively running (not paused and has a start epoch), add live elapsed time
+    if (timer.timerStartEpoch && !timer.timerPaused) {
+      secs += Math.floor((now - timer.timerStartEpoch) / 1000);
+    }
+    totalProductiveSeconds += secs;
+    agentProductiveSeconds[timer.agentId] = (agentProductiveSeconds[timer.agentId] ?? 0) + secs;
+  }
 
   // ── Summary ──
   const totalTx = txs.length;
   const done      = txs.filter((t) => t.status === "COMPLETION").length;
-const pending   = txs.filter((t) => t.status === "PENDING").length;
-const hold      = txs.filter((t) => t.status === "HOLD").length;
-const escalated = txs.filter((t) => t.status === "ESCALATION").length;
+  const pending   = txs.filter((t) => t.status === "PENDING").length;
+  const hold      = txs.filter((t) => t.status === "HOLD").length;
+  const escalated = txs.filter((t) => t.status === "ESCALATION").length;
 
   const tatsWithValue = txs.filter((t) => t.tat !== undefined && t.tat !== null);
   const avgTat = tatsWithValue.length
     ? Math.round(tatsWithValue.reduce((a, t) => a + (t.tat ?? 0), 0) / tatsWithValue.length)
     : 0;
-
-  const totalProductiveSeconds = tatsWithValue.reduce((a, t) => a + (t.tat ?? 0), 0);
 
   const completionRate = totalTx ? Math.round((done / totalTx) * 100) : 0;
 
@@ -89,6 +114,7 @@ const escalated = txs.filter((t) => t.status === "ESCALATION").length;
       hold: a.hold,
       escalated: a.escalated,
       avgTat:    a.tatCount ? Math.round(a.tatSum / a.tatCount) : 0,
+      productiveSeconds: agentProductiveSeconds[id] ?? 0, // Add productive seconds from timer
       // Exclude NO_DOC from rate denominator
       rate:
         a.done + a.pending + a.escalated > 0
@@ -167,8 +193,17 @@ const escalated = txs.filter((t) => t.status === "ESCALATION").length;
     .sort((a, b) => a.date.localeCompare(b.date));
 
   return NextResponse.json({
-    summary: { totalTx, done, pending, hold, escalated, avgTat, completionRate, totalProductiveSeconds },
-    agentStats,
+    summary: { 
+      totalTx, 
+      done, 
+      pending, 
+      hold, 
+      escalated, 
+      avgTat, 
+      completionRate, 
+      totalProductiveSeconds  // Now from ProductivityTimer model with live calculation
+    },
+    agentStats,  // Now includes productiveSeconds for each agent
     docTypeStats,
     dailyTrend,
     agentDailyRates,

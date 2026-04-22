@@ -31,6 +31,7 @@ interface AgentStat {
   escalated: number;
   avgTat: number;
   rate: number;
+  productiveSeconds: number; // Add this field
 }
 
 interface DailyPoint {
@@ -352,8 +353,11 @@ export default function DashboardPage() {
     try {
       const from = daysAgo(6);
       const to   = today();
+      
+      // Fetch analytics (which should now use ProductivityTimer model)
       const res  = await fetch(`/api/kpi/analytics?from=${from}&to=${to}`);
       const data = await res.json();
+      
       setSummary(data.summary);
       setAgentStats(data.agentStats ?? []);
       setDailyTrend(data.dailyTrend ?? []);

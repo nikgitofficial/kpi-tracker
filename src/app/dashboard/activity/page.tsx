@@ -27,8 +27,16 @@ interface Transaction {
   productiveSeconds?: number;
   countType?: "transaction" | "volume";
   ownerEmail?: string;
-  timerStartEpoch?: number;
-  timerPaused?: boolean;
+}
+
+interface TimerRecord {
+  _id: string;
+  agentId: string;
+  agentName: string;
+  date: string;
+  productiveSeconds: number;
+  timerStartEpoch: number | null;
+  timerPaused: boolean;
 }
 
 interface Agent {
@@ -56,8 +64,10 @@ interface AgentSession {
 interface AgentStatus {
   agent: Agent;
   session: AgentSession | null;
-  transactions: Transaction[];       // all tx including __PROD_TIMER__
-  productiveSeconds: number;         // FIX: derived from __PROD_TIMER__ record
+  transactions: Transaction[];
+  productiveSeconds: number;
+  timerPaused: boolean;
+  timerExists: boolean;
   liveBreakSeconds: number;
   isOnBreak: boolean;
   isActive: boolean;
@@ -200,22 +210,9 @@ interface AgentStatusCardProps {
 function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
   useTick(1000);
 
-  const { agent, session, transactions, isOnBreak, isActive } = status;
+  const { agent, session, transactions, isOnBreak, isActive, productiveSeconds, timerPaused, timerExists } = status;
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ message: string; action: () => void } | null>(null);
-
-  /* ── Derive productive seconds live from __PROD_TIMER__ tx ── */
-  const timerTx = transactions.find(t => t.docType === "__PROD_TIMER__") as (Transaction & { timerStartEpoch?: number; timerPaused?: boolean }) | undefined;
-  const productiveSeconds = (() => {
-    if (!timerTx) return 0;
-    const acc = timerTx.productiveSeconds ?? 0;
-    if (timerTx.timerStartEpoch && !timerTx.timerPaused) {
-      return acc + Math.floor((Date.now() - timerTx.timerStartEpoch) / 1000);
-    }
-    return acc;
-  })();
-  const timerPaused = !!(timerTx?.timerPaused);
-  const timerExists = !!timerTx;
 
   /* ── Live break seconds ── */
   const liveBreakSeconds = (() => {
@@ -228,7 +225,7 @@ function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
   const totalBreakSeconds = (session?.totalBreakSeconds ?? 0) + liveBreakSeconds;
   const completedBreaks   = session?.breaks.filter(b => b.endEpoch).length ?? 0;
 
-  // FIX: filter out __PROD_TIMER__ for tx counts
+  // Filter out timer records for tx counts
   const realTx  = transactions.filter(t => t.docType !== "__PROD_TIMER__");
   const done    = realTx.filter(t => t.status === "COMPLETION").length;
   const hold    = realTx.filter(t => t.status === "HOLD").length;
@@ -466,12 +463,13 @@ function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
    ─── Main Activity Page
 ═══════════════════════════════════ */
 export default function ActivityPage() {
-  // FIX: separate raw transactions (display) from timer records
   const [transactions, setTransactions]         = useState<Transaction[]>([]);
-  const [timerTxByAgent, setTimerTxByAgent]     = useState<Record<string, Transaction | null>>({});
+  const [timerMap, setTimerMap]                 = useState<Record<string, TimerRecord>>({});
   const [agents, setAgents]                     = useState<Agent[]>([]);
   const [sessions, setSessions]                 = useState<Record<string, AgentSession | null>>({});
   const [agentTxMap, setAgentTxMap]             = useState<Record<string, Transaction[]>>({});
+  const [agentProductiveSeconds, setAgentProductiveSeconds] = useState<Record<string, number>>({});
+  const [agentTimerPaused, setAgentTimerPaused] = useState<Record<string, boolean>>({});
   const [loading, setLoading]                   = useState(true);
   const [statusLoading, setStatusLoading]       = useState(true);
   const [from, setFrom]                         = useState(daysAgo(6));
@@ -484,34 +482,48 @@ export default function ActivityPage() {
   const PAGE_SIZE = 15;
   const tick = useTick(10000);
 
-  /* ── Fetch timeline transactions ──
-     FIX: keep __PROD_TIMER__ separate for accurate productive seconds
-  ── */
+  /* ── Fetch timeline transactions and timers ── */
   useEffect(() => {
     setLoading(true);
     Promise.all([
       fetch(`/api/kpi/transactions?from=${from}&to=${to}`).then(r => r.json()),
       fetch("/api/kpi/agents").then(r => r.json()),
-    ]).then(([txData, agentData]) => {
+      fetch(`/api/kpi/productivity-timers?from=${from}&to=${to}`).then(r => r.json()),
+    ]).then(([txData, agentData, timerData]) => {
       const allTx: Transaction[] = txData.transactions ?? [];
-
-      // FIX: split out timer records vs real transactions
-      const realTx    = allTx.filter(t => t.docType !== "__PROD_TIMER__");
-      const timerMap: Record<string, Transaction | null> = {};
-      allTx.filter(t => t.docType === "__PROD_TIMER__").forEach(t => {
-        // key by agentId; last one wins (should only be one per agent per day range)
-        timerMap[t.agentId] = t;
-      });
-
+      
+      // Filter out timer records from transactions
+      const realTx = allTx.filter(t => t.docType !== "__PROD_TIMER__");
+      
+      // Build timer map with live seconds calculation
+      const timers: TimerRecord[] = timerData.timers ?? [];
+      const now = Date.now();
+      const timerMapData: Record<string, TimerRecord> = {};
+      
+      for (const timer of timers) {
+        // Calculate live seconds if timer is running
+        let liveSecs = timer.productiveSeconds;
+        if (timer.timerStartEpoch && !timer.timerPaused) {
+          liveSecs += Math.floor((now - timer.timerStartEpoch) / 1000);
+        }
+        timerMapData[timer.agentId] = {
+          ...timer,
+          productiveSeconds: liveSecs,
+        };
+      }
+      
       setTransactions(realTx);
-      setTimerTxByAgent(timerMap);
+      setTimerMap(timerMapData);
       setAgents(agentData.agents ?? []);
       setLoading(false);
       setPage(1);
+    }).catch(err => {
+      console.error("Failed to fetch data:", err);
+      setLoading(false);
     });
   }, [from, to]);
 
-  /* ── Fetch live agent status ── */
+  /* ── Fetch live agent status (includes timer and session) ── */
   const fetchAgentStatus = useCallback(async (agentList: Agent[]) => {
     if (agentList.length === 0) return;
     setStatusLoading(true);
@@ -519,28 +531,56 @@ export default function ActivityPage() {
 
     const results = await Promise.all(
       agentList.map(async (agent) => {
-        const [txRes, sessionRes] = await Promise.all([
+        const [txRes, sessionRes, timerRes] = await Promise.all([
           fetch(`/api/kpi/transactions?date=${dateStr}&agentId=${agent._id}`).then(r => r.json()),
           fetch(`/api/kpi/session?agentId=${agent._id}&date=${dateStr}`).then(r => r.json()),
+          fetch(`/api/kpi/productivity-timer?agentId=${agent._id}&date=${dateStr}`).then(r => r.json()),
         ]);
+        
+        // Calculate live productive seconds from timer record
+        const timerRecord = timerRes.record;
+        let productiveSeconds = 0;
+        let timerPaused = false;
+        let timerExists = false;
+        
+        if (timerRecord) {
+          timerExists = true;
+          timerPaused = timerRecord.timerPaused ?? false;
+          productiveSeconds = timerRecord.productiveSeconds ?? 0;
+          if (timerRecord.timerStartEpoch && !timerRecord.timerPaused) {
+            productiveSeconds += Math.floor((Date.now() - timerRecord.timerStartEpoch) / 1000);
+          }
+        }
+        
         return {
           agentId: agent._id,
-          // FIX: keep ALL txs (including __PROD_TIMER__) for the status card
-          // The card itself derives productiveSeconds from the timer record
           txs: txRes.transactions ?? [],
           session: sessionRes.session ?? null,
+          productiveSeconds,
+          timerPaused,
+          timerExists,
         };
       })
     );
 
-    const txMap: Record<string, Transaction[]>          = {};
+    const txMap: Record<string, Transaction[]> = {};
     const sessionMap: Record<string, AgentSession | null> = {};
+    const productiveMap: Record<string, number> = {};
+    const timerPausedMap: Record<string, boolean> = {};
+    const timerExistsMap: Record<string, boolean> = {};
+    
     results.forEach(r => {
-      txMap[r.agentId]     = r.txs;
+      txMap[r.agentId] = r.txs;
       sessionMap[r.agentId] = r.session;
+      productiveMap[r.agentId] = r.productiveSeconds;
+      timerPausedMap[r.agentId] = r.timerPaused;
+      timerExistsMap[r.agentId] = r.timerExists;
     });
+    
     setAgentTxMap(txMap);
     setSessions(sessionMap);
+    setAgentProductiveSeconds(productiveMap);
+    setAgentTimerPaused(timerPausedMap);
     setStatusLoading(false);
   }, []);
 
@@ -551,12 +591,30 @@ export default function ActivityPage() {
   /* Per-agent refresh after actions */
   const refreshAgent = useCallback(async (agentId: string) => {
     const dateStr = today();
-    const [txRes, sessionRes] = await Promise.all([
+    const [txRes, sessionRes, timerRes] = await Promise.all([
       fetch(`/api/kpi/transactions?date=${dateStr}&agentId=${agentId}`).then(r => r.json()),
       fetch(`/api/kpi/session?agentId=${agentId}&date=${dateStr}`).then(r => r.json()),
+      fetch(`/api/kpi/productivity-timer?agentId=${agentId}&date=${dateStr}`).then(r => r.json()),
     ]);
+    
+    const timerRecord = timerRes.record;
+    let productiveSeconds = 0;
+    let timerPaused = false;
+    let timerExists = false;
+    
+    if (timerRecord) {
+      timerExists = true;
+      timerPaused = timerRecord.timerPaused ?? false;
+      productiveSeconds = timerRecord.productiveSeconds ?? 0;
+      if (timerRecord.timerStartEpoch && !timerRecord.timerPaused) {
+        productiveSeconds += Math.floor((Date.now() - timerRecord.timerStartEpoch) / 1000);
+      }
+    }
+    
     setAgentTxMap(prev => ({ ...prev, [agentId]: txRes.transactions ?? [] }));
-    setSessions(prev  => ({ ...prev, [agentId]:  sessionRes.session ?? null }));
+    setSessions(prev  => ({ ...prev, [agentId]: sessionRes.session ?? null }));
+    setAgentProductiveSeconds(prev => ({ ...prev, [agentId]: productiveSeconds }));
+    setAgentTimerPaused(prev => ({ ...prev, [agentId]: timerPaused }));
   }, []);
 
   /* ── Build agent statuses ── */
@@ -565,19 +623,22 @@ export default function ActivityPage() {
     const txs       = agentTxMap[agent._id] ?? [];
     const isOnBreak = !!(session?.breaks.find(b => !b.endEpoch));
     const isActive  = !!(session && !session.sessionEndEpoch && !isOnBreak);
-
-    // FIX: derive productiveSeconds from __PROD_TIMER__ record in this agent's txs
-    const timerTx = txs.find(t => t.docType === "__PROD_TIMER__");
-    const productiveSeconds = (() => {
-      if (!timerTx) return 0;
-      const acc = timerTx.productiveSeconds ?? 0;
-      if (timerTx.timerStartEpoch && !timerTx.timerPaused) {
-        return acc + Math.floor((Date.now() - timerTx.timerStartEpoch) / 1000);
-      }
-      return acc;
-    })();
-
-    return { agent, session, transactions: txs, productiveSeconds, liveBreakSeconds: 0, isOnBreak, isActive };
+    
+    const productiveSeconds = agentProductiveSeconds[agent._id] ?? 0;
+    const timerPaused = agentTimerPaused[agent._id] ?? false;
+    const timerExists = productiveSeconds > 0 || timerPaused;
+    
+    return { 
+      agent, 
+      session, 
+      transactions: txs, 
+      productiveSeconds, 
+      timerPaused,
+      timerExists,
+      liveBreakSeconds: 0, 
+      isOnBreak, 
+      isActive 
+    };
   });
 
   /* ── Team summary (live status view) ── */
@@ -585,7 +646,7 @@ export default function ActivityPage() {
   const breakCount   = agentStatuses.filter(s => s.isOnBreak).length;
   const idleCount    = agentStatuses.filter(s => !s.isActive && !s.isOnBreak).length;
 
-  // FIX: exclude __PROD_TIMER__ from today's TX count
+  // Exclude __PROD_TIMER__ from today's TX count
   const totalTodayTx = Object.values(agentTxMap)
     .flat()
     .filter(t => t.docType !== "__PROD_TIMER__")
@@ -602,24 +663,16 @@ export default function ActivityPage() {
   const paginated = filtered.slice(0, page * PAGE_SIZE);
   const hasMore   = filtered.length > paginated.length;
 
-  /* ── Timeline stats ──
-     FIX: productive seconds come from timerTxByAgent, NOT from real transactions
-  ── */
+  /* ── Timeline stats ── */
   const completions    = transactions.filter(t => t.status === "COMPLETION").length;
   const escalations    = transactions.filter(t => t.status === "ESCALATION").length;
   const holds          = transactions.filter(t => t.status === "HOLD").length;
   const completionRate = transactions.length ? Math.round((completions / transactions.length) * 100) : 0;
   const totalTat       = transactions.reduce((s, t) => s + (t.tat ?? 0), 0);
 
-  // FIX: sum productive seconds from the timer records keyed by agent
-  const totalProductiveSec = Object.values(timerTxByAgent).reduce((sum, timerTx) => {
-    if (!timerTx) return sum;
-    const acc = timerTx.productiveSeconds ?? 0;
-    // If the timer was running (not paused) and has a start epoch, add live seconds
-    if (timerTx.timerStartEpoch && !timerTx.timerPaused) {
-      return sum + acc + Math.floor((Date.now() - timerTx.timerStartEpoch) / 1000);
-    }
-    return sum + acc;
+  // Sum productive seconds from timerMap
+  const totalProductiveSec = Object.values(timerMap).reduce((sum, timer) => {
+    return sum + (timer?.productiveSeconds ?? 0);
   }, 0);
 
   /* ── Group by date for timeline ── */
@@ -771,7 +824,7 @@ export default function ActivityPage() {
               </div>
             </div>
 
-            {/* Stats row — FIX: totalProductiveSec now comes from timer records */}
+            {/* Stats row */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
               {[
                 { label: "Total TX",        value: transactions.length, icon: Activity,      color: "text-slate-700 dark:text-zinc-200"    },
@@ -796,10 +849,7 @@ export default function ActivityPage() {
               })}
             </div>
 
-            {/* Agent summary pills —
-                FIX: show productive time from timerTxByAgent; fall back to TAT only if no timer record.
-                Label clearly indicates which value is shown.
-            */}
+            {/* Agent summary pills */}
             {agents.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-6">
                 {agents.map(agent => {
@@ -810,16 +860,9 @@ export default function ActivityPage() {
                   const agentHold   = agentTx.filter(t => t.status === "HOLD").length;
                   const isSelected  = filterAgent === agent.name;
 
-                  // FIX: look up timer record by agentId for this date range
-                  const timerTx = timerTxByAgent[agent._id] ?? null;
-                  const agentProd = (() => {
-                    if (!timerTx) return null;
-                    const acc = timerTx.productiveSeconds ?? 0;
-                    if (timerTx.timerStartEpoch && !timerTx.timerPaused) {
-                      return acc + Math.floor((Date.now() - timerTx.timerStartEpoch) / 1000);
-                    }
-                    return acc;
-                  })();
+                  // Get timer record for this agent
+                  const timerRec = timerMap[agent._id];
+                  const agentProd = timerRec?.productiveSeconds ?? null;
 
                   return (
                     <button
@@ -844,7 +887,6 @@ export default function ActivityPage() {
                           <PauseCircle size={9} />{agentHold}
                         </span>
                       )}
-                      {/* FIX: show productive time if available, otherwise TAT with a label */}
                       {agentProd !== null ? (
                         <span className="text-emerald-600 dark:text-emerald-400 font-mono flex items-center gap-0.5">
                           <Zap size={9} />{formatHms(agentProd)}
@@ -970,7 +1012,7 @@ export default function ActivityPage() {
               </div>
             )}
 
-            {/* Bottom summary — FIX: productive time is now accurate */}
+            {/* Bottom summary */}
             {!loading && filtered.length > 0 && (
               <div className="mt-8 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl px-5 py-4">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
@@ -985,19 +1027,13 @@ export default function ActivityPage() {
                     <p className="text-[11px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide mt-0.5">Total TAT</p>
                   </div>
                   <div>
-                    {/* FIX: show productive time only for agents visible in the current filter */}
                     <p className="text-lg font-bold text-cyan-600 dark:text-cyan-400 font-mono">
                       {(() => {
                         if (filterAgent === "all") return formatHms(totalProductiveSec);
-                        const agent     = agents.find(a => a.name === filterAgent);
+                        const agent = agents.find(a => a.name === filterAgent);
                         if (!agent) return "—";
-                        const timerTx = timerTxByAgent[agent._id] ?? null;
-                        if (!timerTx) return "—";
-                        const acc = timerTx.productiveSeconds ?? 0;
-                        if (timerTx.timerStartEpoch && !timerTx.timerPaused) {
-                          return formatHms(acc + Math.floor((Date.now() - timerTx.timerStartEpoch) / 1000));
-                        }
-                        return formatHms(acc);
+                        const timer = timerMap[agent._id];
+                        return timer ? formatHms(timer.productiveSeconds) : "—";
                       })()}
                     </p>
                     <p className="text-[11px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide mt-0.5">Productive time</p>

@@ -521,117 +521,130 @@ export function EodReportClient() {
   const [exporting, setExporting] = useState<"pdf" | "excel" | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
+  setLoading(true);
 
-    const [txRes, agentRes] = await Promise.all([
-      fetch(`/api/kpi/transactions?date=${date}`),
-      fetch("/api/kpi/agents"),
-    ]);
-    const txData    = await txRes.json();
-    const agentData = await agentRes.json();
+  // Fetch all three data sources in parallel
+  const [txRes, agentRes, timerRes] = await Promise.all([
+    fetch(`/api/kpi/transactions?date=${date}`),
+    fetch("/api/kpi/agents"),
+    fetch(`/api/kpi/productivity-timers?date=${date}`), // New endpoint for all timers
+  ]);
+  
+  const txData    = await txRes.json();
+  const agentData = await agentRes.json();
+  const timerData = await timerRes.json();
 
-    const txs: Transaction[]    = (txData.transactions ?? []).filter((t: Transaction) => t.docType !== "__PROD_TIMER__");
-    const agents: Agent[]        = agentData.agents ?? [];
+  // Filter out any __PROD_TIMER__ transactions (they shouldn't exist anymore, but safe to keep)
+  const txs: Transaction[] = (txData.transactions ?? []).filter((t: Transaction) => t.docType !== "__PROD_TIMER__");
+  const agents: Agent[]    = agentData.agents ?? [];
+  
+  // Timer data from ProductivityTimer collection
+  const timers: Array<{ agentId: string; productiveSeconds: number; timerStartEpoch?: number | null; timerPaused?: boolean }> = timerData.timers ?? [];
 
-    const groupMap = new Map<string, string>();
-    for (const a of agents) groupMap.set(a._id, a.group ?? "Ungrouped");
+  const groupMap = new Map<string, string>();
+  for (const a of agents) groupMap.set(a._id, a.group ?? "Ungrouped");
 
-    // Build per-agent timer productiveSeconds from __PROD_TIMER__ records
-    const allTxsRaw: Transaction[] = txData.transactions ?? [];
-    const timerMap = new Map<string, number>();
-    for (const t of allTxsRaw) {
-      if (t.docType === "__PROD_TIMER__") {
-        timerMap.set(t.agentId, (timerMap.get(t.agentId) ?? 0) + (t.productiveSeconds ?? 0));
-      }
+  // Build per-agent timer productiveSeconds from ProductivityTimer collection
+  // Account for live running timers (active timers that haven't been paused/ended)
+  const now = Date.now();
+  const timerMap = new Map<string, number>();
+  for (const t of timers) {
+    let secs = t.productiveSeconds ?? 0;
+    // If timer is actively running (not paused and has a start epoch), add live elapsed time
+    if (t.timerStartEpoch && !t.timerPaused) {
+      const liveElapsed = Math.floor((now - t.timerStartEpoch) / 1000);
+      secs += liveElapsed;
     }
+    timerMap.set(t.agentId, (timerMap.get(t.agentId) ?? 0) + secs);
+  }
 
-    const agentRowMap = new Map<string, AgentRow>();
+  const agentRowMap = new Map<string, AgentRow>();
 
-    for (const tx of txs) {
-      if (!agentRowMap.has(tx.agentId)) {
-        agentRowMap.set(tx.agentId, {
-          agentId: tx.agentId,
-          agentName: tx.agentName,
-          group: groupMap.get(tx.agentId) ?? "Ungrouped",
-          totalTat: 0,
-          completion: 0, pending: 0, escalation: 0, hold: 0,
-          total: 0, aht: 0, productiveSeconds: timerMap.get(tx.agentId) ?? 0,
-          transactions: [],
-          prodDocTypeCounts: {},
-          nonProdDocTypeCounts: {},
+  for (const tx of txs) {
+    if (!agentRowMap.has(tx.agentId)) {
+      agentRowMap.set(tx.agentId, {
+        agentId: tx.agentId,
+        agentName: tx.agentName,
+        group: groupMap.get(tx.agentId) ?? "Ungrouped",
+        totalTat: 0,
+        completion: 0, pending: 0, escalation: 0, hold: 0,
+        total: 0, aht: 0, productiveSeconds: timerMap.get(tx.agentId) ?? 0,
+        transactions: [],
+        prodDocTypeCounts: {},
+        nonProdDocTypeCounts: {},
+      });
+    }
+    const row = agentRowMap.get(tx.agentId)!;
+    row.total++;
+    row.transactions.push(tx);
+    if (tx.tat) row.totalTat += tx.tat;
+    if (tx.status === "COMPLETION") row.completion++;
+    if (tx.status === "PENDING")    row.pending++;
+    if (tx.status === "ESCALATION") row.escalation++;
+    if (tx.status === "HOLD")       row.hold++;
+
+    // Tally main tx
+    const cat = tx.taskCategory ?? "Production";
+    const ct  = (tx.countType ?? "transaction") as CountType;
+    const add = ct === "volume" ? (tx.volume ?? 1) : 1;
+    const bucket = cat === "Production" ? row.prodDocTypeCounts : row.nonProdDocTypeCounts;
+    bucket[tx.docType] = { count: (bucket[tx.docType]?.count ?? 0) + add, countType: ct };
+
+    // Tally subtasks
+    for (const st of tx.subtasks ?? []) {
+      const stCat = st.taskCategory ?? cat;
+      const stCt  = (st.countType ?? "transaction") as CountType;
+      const stAdd = stCt === "volume" ? (st.number ?? 1) : 1;
+      const stBucket = stCat === "Production" ? row.prodDocTypeCounts : row.nonProdDocTypeCounts;
+      stBucket[st.docType] = { count: (stBucket[st.docType]?.count ?? 0) + stAdd, countType: stCt };
+    }
+  }
+
+  // Agents with no transactions but with a timer record
+  for (const [agentId, prodSec] of timerMap) {
+    if (!agentRowMap.has(agentId)) {
+      const agent = agents.find(a => a._id === agentId);
+      if (agent) {
+        agentRowMap.set(agentId, {
+          agentId, agentName: agent.name,
+          group: groupMap.get(agentId) ?? "Ungrouped",
+          totalTat: 0, completion: 0, pending: 0, escalation: 0, hold: 0,
+          total: 0, aht: 0, productiveSeconds: prodSec,
+          transactions: [], prodDocTypeCounts: {}, nonProdDocTypeCounts: {},
         });
       }
-      const row = agentRowMap.get(tx.agentId)!;
-      row.total++;
-      row.transactions.push(tx);
-      if (tx.tat) row.totalTat += tx.tat;
-      if (tx.status === "COMPLETION") row.completion++;
-      if (tx.status === "PENDING")    row.pending++;
-      if (tx.status === "ESCALATION") row.escalation++;
-      if (tx.status === "HOLD")       row.hold++;
-
-      // Tally main tx
-      const cat = tx.taskCategory ?? "Production";
-      const ct  = (tx.countType ?? "transaction") as CountType;
-      const add = ct === "volume" ? (tx.volume ?? 1) : 1;
-      const bucket = cat === "Production" ? row.prodDocTypeCounts : row.nonProdDocTypeCounts;
-      bucket[tx.docType] = { count: (bucket[tx.docType]?.count ?? 0) + add, countType: ct };
-
-      // Tally subtasks
-      for (const st of tx.subtasks ?? []) {
-        const stCat = st.taskCategory ?? cat;
-        const stCt  = (st.countType ?? "transaction") as CountType;
-        const stAdd = stCt === "volume" ? (st.number ?? 1) : 1;
-        const stBucket = stCat === "Production" ? row.prodDocTypeCounts : row.nonProdDocTypeCounts;
-        stBucket[st.docType] = { count: (stBucket[st.docType]?.count ?? 0) + stAdd, countType: stCt };
-      }
     }
+  }
 
-    // Agents with no txs but with a timer record
-    for (const [agentId, prodSec] of timerMap) {
-      if (!agentRowMap.has(agentId)) {
-        const agent = agents.find(a => a._id === agentId);
-        if (agent) {
-          agentRowMap.set(agentId, {
-            agentId, agentName: agent.name,
-            group: groupMap.get(agentId) ?? "Ungrouped",
-            totalTat: 0, completion: 0, pending: 0, escalation: 0, hold: 0,
-            total: 0, aht: 0, productiveSeconds: prodSec,
-            transactions: [], prodDocTypeCounts: {}, nonProdDocTypeCounts: {},
-          });
-        }
-      }
+  const rows = Array.from(agentRowMap.values()).map(r => ({
+    ...r,
+    aht: r.total ? Math.round(r.totalTat / r.total) : 0,
+  }));
+
+  const groupedResult: Record<string, AgentRow[]> = {};
+  for (const row of rows) {
+    const g = row.group;
+    if (!groupedResult[g]) groupedResult[g] = [];
+    groupedResult[g].push(row);
+  }
+
+  const seenGroups = new Set<string>();
+  const orderedGroups: string[] = [];
+  for (const a of agents) {
+    const g = a.group ?? "Ungrouped";
+    if (!seenGroups.has(g) && groupedResult[g]) {
+      seenGroups.add(g); orderedGroups.push(g);
     }
+  }
+  for (const g of Object.keys(groupedResult)) {
+    if (!seenGroups.has(g)) orderedGroups.push(g);
+  }
+  orderedGroups.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
 
-    const rows = Array.from(agentRowMap.values()).map(r => ({
-      ...r,
-      aht: r.total ? Math.round(r.totalTat / r.total) : 0,
-    }));
-
-    const groupedResult: Record<string, AgentRow[]> = {};
-    for (const row of rows) {
-      const g = row.group;
-      if (!groupedResult[g]) groupedResult[g] = [];
-      groupedResult[g].push(row);
-    }
-
-    const seenGroups = new Set<string>();
-    const orderedGroups: string[] = [];
-    for (const a of agents) {
-      const g = a.group ?? "Ungrouped";
-      if (!seenGroups.has(g) && groupedResult[g]) {
-        seenGroups.add(g); orderedGroups.push(g);
-      }
-    }
-    for (const g of Object.keys(groupedResult)) {
-      if (!seenGroups.has(g)) orderedGroups.push(g);
-    }
-    orderedGroups.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
-
-    setGrouped(groupedResult);
-    setGroups(orderedGroups);
-    setLoading(false);
-  }, [date]);
+  setGrouped(groupedResult);
+  setGroups(orderedGroups);
+  setLoading(false);
+}, [date]);
 
   useEffect(() => { load(); }, [load]);
 

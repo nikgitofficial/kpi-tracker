@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { connectDB } from "@/lib/db";
-import Transaction from "@/models/Transaction";
+import ProductivityTimer from "@/models/ProductivityTimer";
 
-// GET /api/kpi/productivity-timer?agentId=xxx&date=YYYY-MM-DD
+/* ─────────────────────────────────────────────────────────────
+   GET /api/kpi/productivity-timer?agentId=xxx&date=YYYY-MM-DD
+   Returns the timer record for an agent+date combo, plus the
+   current server epoch so the client can correct clock skew.
+───────────────────────────────────────────────────────────── */
 export async function GET(req: NextRequest) {
   try {
     const session = await auth();
@@ -12,21 +16,23 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const agentId = searchParams.get("agentId");
-    const date = searchParams.get("date");
+    const date    = searchParams.get("date");
 
     if (!agentId || !date)
-      return NextResponse.json({ error: "Missing agentId or date" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing agentId or date" },
+        { status: 400 }
+      );
 
     await connectDB();
 
-    const record = await Transaction.findOne({
+    const record = await ProductivityTimer.findOne({
       ownerEmail: session.user.email,
       agentId,
       date,
-      docType: "__PROD_TIMER__",
     }).lean();
 
-    // Return server timestamp so client can correct for clock skew
+    // serverNow lets the client compute clock-skew offset
     return NextResponse.json({ record: record ?? null, serverNow: Date.now() });
   } catch (err) {
     console.error("[GET /api/kpi/productivity-timer]", err);
@@ -34,46 +40,51 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/kpi/productivity-timer — create timer record
+/* ─────────────────────────────────────────────────────────────
+   POST /api/kpi/productivity-timer
+   Creates a timer record for an agent+date if one doesn't exist.
+   Idempotent — returns existing record on duplicate.
+───────────────────────────────────────────────────────────── */
 export async function POST(req: NextRequest) {
   try {
     const session = await auth();
     if (!session?.user?.email)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { agentId, agentName, date } = await req.json();
+    const body = await req.json();
+    const { agentId, agentName, date } = body;
+
     if (!agentId || !agentName || !date)
-      return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
 
     await connectDB();
 
-    // Upsert — only create if not already exists
-    const existing = await Transaction.findOne({
-      ownerEmail: session.user.email,
-      agentId,
-      date,
-      docType: "__PROD_TIMER__",
-    });
-
-    if (existing) return NextResponse.json({ record: existing });
-
-    const record = await Transaction.create({
-      txId: `TIMER-${Date.now()}`,
-      agentId,
-      agentName,
-      docType: "__PROD_TIMER__",
-      companyName: "__timer__",
-      volume: 1,
-      startTime: "00:00",
-      startEpoch: Date.now(),
-      date,
-      status: "PENDING",
-      ownerEmail: session.user.email,
-      taskCategory: "Non-Production",
-      productiveSeconds: 0,
-      timerStartEpoch: null,
-      timerPaused: false,
-    });
+    // findOneAndUpdate with upsert is atomic — safe under concurrent requests
+    // from thousands of agents hitting the endpoint simultaneously.
+    const record = await ProductivityTimer.findOneAndUpdate(
+      {
+        ownerEmail: session.user.email,
+        agentId,
+        date,
+      },
+      {
+        $setOnInsert: {
+          ownerEmail:        session.user.email,
+          agentId,
+          agentName,
+          date,
+          productiveSeconds: 0,
+          timerStartEpoch:   null,
+          timerPaused:       false,
+        },
+      },
+      {
+        upsert:         true,
+        new:            true,
+        // runValidators ensures schema constraints are respected on insert
+        runValidators:  true,
+      }
+    );
 
     return NextResponse.json({ record }, { status: 201 });
   } catch (err) {
@@ -82,7 +93,11 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PATCH /api/kpi/productivity-timer — update timer fields
+/* ─────────────────────────────────────────────────────────────
+   PATCH /api/kpi/productivity-timer
+   Partial update of timer fields.
+   Accepts: { id, productiveSeconds?, timerStartEpoch?, timerPaused? }
+───────────────────────────────────────────────────────────── */
 export async function PATCH(req: NextRequest) {
   try {
     const session = await auth();
@@ -93,23 +108,33 @@ export async function PATCH(req: NextRequest) {
     const { id, productiveSeconds, timerStartEpoch, timerPaused } = body;
 
     if (!id)
-      return NextResponse.json({ error: "Missing id" }, { status: 400 });
+      return NextResponse.json({ error: "Missing timer id" }, { status: 400 });
 
     await connectDB();
 
-    const updateData: Record<string, unknown> = {};
-    if (productiveSeconds !== undefined) updateData.productiveSeconds = Number(productiveSeconds);
-    if ("timerStartEpoch" in body) updateData.timerStartEpoch = timerStartEpoch ?? null;
-    if ("timerPaused" in body) updateData.timerPaused = timerPaused ?? false;
+    const patch: Record<string, unknown> = {};
 
-    const record = await Transaction.findOneAndUpdate(
+    if (productiveSeconds !== undefined)
+      patch.productiveSeconds = Math.max(0, Number(productiveSeconds));
+
+    // Explicit presence check — caller may want to explicitly set null
+    if ("timerStartEpoch" in body)
+      patch.timerStartEpoch = timerStartEpoch ?? null;
+
+    if ("timerPaused" in body)
+      patch.timerPaused = Boolean(timerPaused);
+
+    if (Object.keys(patch).length === 0)
+      return NextResponse.json({ error: "No fields to update" }, { status: 400 });
+
+    const record = await ProductivityTimer.findOneAndUpdate(
       { _id: id, ownerEmail: session.user.email },
-      { $set: updateData },
-      { new: true }
+      { $set: patch },
+      { new: true, runValidators: true }
     );
 
     if (!record)
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json({ error: "Timer record not found" }, { status: 404 });
 
     return NextResponse.json({ record });
   } catch (err) {

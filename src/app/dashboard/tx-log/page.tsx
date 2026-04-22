@@ -343,12 +343,6 @@ function toHMS(seconds: number): string {
   return `${h}:${m}:${s}`;
 }
 
-// ─── Drop-in replacement for the ProductivityTimer function in your tx-log page ───
-// Only the component itself changes; all types, helpers, and other components stay the same.
-
-// ─── Drop-in replacement for the ProductivityTimer function in your tx-log page ───
-// Only the component itself changes; all types, helpers, and other components stay the same.
-
 function ProductivityTimer({
   agentId,
   agentName,
@@ -360,9 +354,7 @@ function ProductivityTimer({
   const [record, setRecord] = useState<TimerRecord | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // ── Clock-skew offset: clientTime - serverTime (ms). Used so that
-  //    timerStartEpoch (written by the server's clock) is compared against
-  //    the same clock. Prevents drift when thousands of agents refresh. ──
+  // ── Clock-skew offset: clientTime - serverTime (ms) ──
   const [serverOffset, setServerOffset] = useState(0);
 
   // ── Live display tick (purely cosmetic — derived from DB record) ──
@@ -392,14 +384,17 @@ function ProductivityTimer({
   useEffect(() => { serverOffsetRef.current = serverOffset; }, [serverOffset]);
 
   // ── Computed display seconds (derived from DB record + live tick) ──
-  // Uses serverOffset to correct for clock skew between client and server.
-  // timerStartEpoch is stored using Date.now() on the client at the moment
-  // the user clicks Start/Resume, so we adjust "now" by the same offset.
+  // FIX: Only add positive elapsed time, never negative
   const computeDisplaySeconds = useCallback((r: TimerRecord | null, offset = 0): number => {
     if (!r) return 0;
     if (r.timerStartEpoch && !r.timerPaused) {
       const adjustedNow = Date.now() - offset;
-      return r.productiveSeconds + Math.floor((adjustedNow - r.timerStartEpoch) / 1000);
+      const elapsed = Math.floor((adjustedNow - r.timerStartEpoch) / 1000);
+      // Only add positive elapsed time, never negative
+      if (elapsed > 0) {
+        return r.productiveSeconds + elapsed;
+      }
+      return r.productiveSeconds;
     }
     return r.productiveSeconds;
   }, []);
@@ -416,8 +411,7 @@ function ProductivityTimer({
       .then((d) => {
         const clientAfter = Date.now();
 
-        // Calculate clock-skew offset so elapsed time is always accurate
-        // even if the client clock drifts from the server clock.
+        // Calculate clock-skew offset
         let offset = 0;
         if (d.serverNow) {
           const roundTrip = clientAfter - clientBefore;
@@ -427,33 +421,47 @@ function ProductivityTimer({
           serverOffsetRef.current = offset;
         }
 
-        setRecord(d.record ?? null);
-        onProductivityChange(computeDisplaySeconds(d.record ?? null, offset));
+        const recordData = d.record ?? null;
+        setRecord(recordData);
+        
+        // Calculate initial display seconds
+        let initialSeconds = 0;
+        if (recordData && recordData.timerStartEpoch && !recordData.timerPaused) {
+          const adjustedNow = Date.now() - offset;
+          const elapsed = Math.floor((adjustedNow - recordData.timerStartEpoch) / 1000);
+          initialSeconds = recordData.productiveSeconds + (elapsed > 0 ? elapsed : 0);
+        } else if (recordData) {
+          initialSeconds = recordData.productiveSeconds;
+        }
+        onProductivityChange(initialSeconds);
       })
-      .catch(() => {})
+      .catch((err) => {
+        console.error("Failed to load timer:", err);
+      })
       .finally(() => setLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agentId, date]);
+  }, [agentId, date, onProductivityChange]);
 
   // ── Notify parent whenever tick fires or record changes ──
   useEffect(() => {
     onProductivityChange(computeDisplaySeconds(record, serverOffset));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tick, record]);
+  }, [tick, record, serverOffset, onProductivityChange, computeDisplaySeconds]);
 
-  // ── Beacon on unload/hide ──
+  // ── Beacon on unload/hide - FIX: Don't add live elapsed, just pause the timer ──
   const flushBeacon = useCallback(() => {
     const r = recordRef.current;
     if (!r || !r.timerStartEpoch || r.timerPaused) return;
+    
+    // Calculate the total time to save (base + elapsed up to now)
     const total = computeDisplaySeconds(r, serverOffsetRef.current);
+    
     navigator.sendBeacon(
       "/api/kpi/timer-beacon",
       new Blob(
         [JSON.stringify({
           id: r._id,
           productiveSeconds: total,
-          timerStartEpoch: r.timerStartEpoch, // sent so server can guard against stale beacons
-          timerPaused: false,
+          timerStartEpoch: null, // Clear the start epoch
+          timerPaused: true, // Mark as paused
         })],
         { type: "application/json" }
       )
@@ -468,7 +476,6 @@ function ProductivityTimer({
     };
 
     window.addEventListener("beforeunload", handleUnload);
-    // pagehide covers iOS Safari where beforeunload is unreliable
     window.addEventListener("pagehide", handleUnload);
     document.addEventListener("visibilitychange", handleVisibility);
 
@@ -511,14 +518,8 @@ function ProductivityTimer({
   const handleStart = async () => {
     const r = await ensureRecord();
     if (!r) return;
-    // Use server-offset-adjusted epoch so the start point aligns with the
-    // server clock. This ensures that after a refresh, elapsed time is
-    // computed consistently regardless of client clock skew.
     const epoch = Date.now() - serverOffsetRef.current;
     const updated = await apiPatch(r._id, {
-      // Do NOT reset productiveSeconds here — only set the start epoch.
-      // Resetting would wipe any time already accumulated (e.g. from a
-      // previous session that was in isDone state).
       timerStartEpoch: epoch,
       timerPaused: false,
     });
@@ -584,7 +585,7 @@ function ProductivityTimer({
     if (updated) setRecord(updated);
   };
 
-  // ── Password gate: open gate instead of edit directly ──
+  // ── Password gate ──
   const openEdit = () => {
     setGatePassword("");
     setGateError("");
@@ -607,7 +608,6 @@ function ProductivityTimer({
         setGateChecking(false);
         return;
       }
-      // Password verified — close gate, open edit
       setShowPasswordGate(false);
       setGatePassword("");
       setEditHMS(toHMS(computeDisplaySeconds(record, serverOffset)));
@@ -662,7 +662,6 @@ function ProductivityTimer({
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
           </span>
         )}
-        {/* Edit button — always visible when record exists and timer not running */}
         {record && !isRunning && (
           <button
             onClick={openEdit}
@@ -828,7 +827,6 @@ function ProductivityTimer({
           <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 w-[340px] shadow-2xl">
             <div className="flex items-center gap-3 mb-5">
               <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center flex-shrink-0">
-                {/* Lock icon — inline SVG to avoid adding a new import */}
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500">
                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                   <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
@@ -922,7 +920,6 @@ function ProductivityTimer({
               )}
             </div>
 
-            {/* Quick-set buttons */}
             <div className="flex flex-wrap gap-1.5 mb-4">
               {[
                 { label: "7h",     secs: 7 * 3600 },

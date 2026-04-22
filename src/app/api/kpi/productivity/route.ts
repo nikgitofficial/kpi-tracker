@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { connectDB } from "@/lib/db";
 import Transaction from "@/models/Transaction";
 import Agent from "@/models/Agent";
+import ProductivityTimer from "@/models/ProductivityTimer";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -32,27 +33,31 @@ export async function GET(req: NextRequest) {
 
   const txs = await Transaction.find(query).lean();
 
+  // ── UPDATED: Use ProductivityTimer model instead of querying Transaction ──
   const timerQuery: Record<string, unknown> = {
     ownerEmail: session.user.email,
-    docType:    "__PROD_TIMER__",
   };
   if (from && to)  timerQuery.date = { $gte: from, $lte: to };
   else if (from)   timerQuery.date = from;
 
-  const timerTxs = await Transaction.find(timerQuery).lean();
+  const timerRecords = await ProductivityTimer.find(timerQuery).lean();
 
-  // ── KEY FIX: account for live running timers ──
-  // If timerStartEpoch is set and timerPaused is false, the timer is actively
-  // running right now. Add the live elapsed time on top of productiveSeconds.
+  // Build productivity seconds per agent
+  // The model's productiveSeconds already includes the persisted time.
+  // For active timers (timerStartEpoch set, timerPaused false), we add live elapsed time.
   const now = Date.now();
   const agentProductivitySeconds: Record<string, number> = {};
-  for (const t of timerTxs) {
-    const key = t.agentId;
-    let secs = t.productiveSeconds ?? 0;
-    if (t.timerStartEpoch && !t.timerPaused) {
-      const liveElapsed = Math.floor((now - t.timerStartEpoch) / 1000);
+  
+  for (const timer of timerRecords) {
+    const key = timer.agentId;
+    let secs = timer.productiveSeconds ?? 0;
+    
+    // If timer is actively running (not paused and has a start epoch), add live elapsed time
+    if (timer.timerStartEpoch && !timer.timerPaused) {
+      const liveElapsed = Math.floor((now - timer.timerStartEpoch) / 1000);
       secs += liveElapsed;
     }
+    
     agentProductivitySeconds[key] = (agentProductivitySeconds[key] ?? 0) + secs;
   }
 
