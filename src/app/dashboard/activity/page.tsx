@@ -68,34 +68,59 @@ interface AgentStatus {
   transactions: Transaction[];
   productiveSeconds: number;
   timerPaused: boolean;
+  /** True if a timer record exists for this agent today (even if paused or at 0). */
   timerExists: boolean;
-  liveBreakSeconds: number;
   isOnBreak: boolean;
   isActive: boolean;
 }
 
 /* ─── Helpers ─── */
-function formatHms(sec?: number) {
-  if (!sec && sec !== 0) return "—";
+function formatHms(sec?: number): string {
+  if (sec == null || isNaN(sec)) return "—";
   const h = Math.floor(sec / 3600).toString().padStart(2, "0");
   const m = Math.floor((sec % 3600) / 60).toString().padStart(2, "0");
   const s = (sec % 60).toString().padStart(2, "0");
   return `${h}:${m}:${s}`;
 }
 
-function today() { return new Date().toISOString().split("T")[0]; }
-function daysAgo(n: number) {
-  const d = new Date(); d.setDate(d.getDate() - n);
+function today(): string {
+  return new Date().toISOString().split("T")[0];
+}
+
+function daysAgo(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
   return d.toISOString().split("T")[0];
 }
-function formatDate(dateStr: string) {
-  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+
+function formatDate(dateStr: string): string {
+  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
 }
-function relativeDate(dateStr: string) {
-  const t = today(), y = daysAgo(1);
+
+function relativeDate(dateStr: string): string {
+  const t = today();
+  const y = daysAgo(1);
   if (dateStr === t) return "Today";
   if (dateStr === y) return "Yesterday";
   return formatDate(dateStr);
+}
+
+/**
+ * Compute live productive seconds from a raw timer record.
+ * Keeps the calculation in one place so the timeline and status
+ * views always agree.
+ */
+function calcProductiveSeconds(timer: TimerRecord | null | undefined): number {
+  if (!timer) return 0;
+  let secs = timer.productiveSeconds ?? 0;
+  if (timer.timerStartEpoch && !timer.timerPaused) {
+    secs += Math.floor((Date.now() - timer.timerStartEpoch) / 1000);
+  }
+  return secs;
 }
 
 const AVATAR_COLORS = [
@@ -114,11 +139,31 @@ function avatarColor(name: string) {
 }
 
 const STATUS_CONFIG = {
-  COMPLETION: { label: "Completion", color: "text-green-600 dark:text-green-400",   bg: "bg-green-50 dark:bg-green-950/50 border-green-200 dark:border-green-800",     dot: "bg-green-500"  },
-  PENDING:    { label: "Pending",    color: "text-amber-600 dark:text-amber-400",   bg: "bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800",     dot: "bg-amber-500"  },
-  ESCALATION: { label: "Escalation", color: "text-purple-600 dark:text-purple-400", bg: "bg-purple-50 dark:bg-purple-950/50 border-purple-200 dark:border-purple-800",  dot: "bg-purple-500" },
-  HOLD:       { label: "Hold",       color: "text-blue-600 dark:text-blue-400",     bg: "bg-blue-50 dark:bg-blue-950/50 border-blue-200 dark:border-blue-800",         dot: "bg-blue-500"   },
-};
+  COMPLETION: {
+    label: "Completion",
+    color: "text-green-600 dark:text-green-400",
+    bg: "bg-green-50 dark:bg-green-950/50 border-green-200 dark:border-green-800",
+    dot: "bg-green-500",
+  },
+  PENDING: {
+    label: "Pending",
+    color: "text-amber-600 dark:text-amber-400",
+    bg: "bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800",
+    dot: "bg-amber-500",
+  },
+  ESCALATION: {
+    label: "Escalation",
+    color: "text-purple-600 dark:text-purple-400",
+    bg: "bg-purple-50 dark:bg-purple-950/50 border-purple-200 dark:border-purple-800",
+    dot: "bg-purple-500",
+  },
+  HOLD: {
+    label: "Hold",
+    color: "text-blue-600 dark:text-blue-400",
+    bg: "bg-blue-50 dark:bg-blue-950/50 border-blue-200 dark:border-blue-800",
+    dot: "bg-blue-500",
+  },
+} as const;
 
 /* ─── Live tick ─── */
 function useTick(ms = 1000) {
@@ -209,13 +254,14 @@ interface AgentStatusCardProps {
 }
 
 function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
+  // 1-second tick so productive time and break time update live in this card.
   useTick(1000);
 
   const { agent, session, transactions, isOnBreak, isActive, productiveSeconds, timerPaused, timerExists } = status;
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ message: string; action: () => void } | null>(null);
 
-  /* ── Live break seconds ── */
+  /* ── Live break seconds (ongoing break only, computed each render tick) ── */
   const liveBreakSeconds = (() => {
     if (!session) return 0;
     const ongoing = session.breaks.find(b => !b.endEpoch);
@@ -223,19 +269,21 @@ function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
     return Math.floor((Date.now() - ongoing.startEpoch) / 1000);
   })();
 
+  // totalBreakSeconds = completed breaks (stored) + ongoing break (live)
   const totalBreakSeconds = (session?.totalBreakSeconds ?? 0) + liveBreakSeconds;
   const completedBreaks   = session?.breaks.filter(b => b.endEpoch).length ?? 0;
 
-  // Filter out timer records for tx counts
+  // Exclude __PROD_TIMER__ pseudo-records from TX counts
   const realTx  = transactions.filter(t => t.docType !== "__PROD_TIMER__");
   const done    = realTx.filter(t => t.status === "COMPLETION").length;
   const hold    = realTx.filter(t => t.status === "HOLD").length;
   const esc     = realTx.filter(t => t.status === "ESCALATION").length;
   const totalTx = realTx.length;
 
-  const SHIFT   = 8 * 3600;
-  const prodPct = Math.min(100, Math.round((productiveSeconds / SHIFT) * 100));
-  const av      = avatarColor(agent.name);
+  const SHIFT_SECONDS = 8 * 3600;
+  const prodPct       = Math.min(100, Math.round((productiveSeconds / SHIFT_SECONDS) * 100));
+  const av            = avatarColor(agent.name);
+  const sessionEnded  = !!(session?.sessionEndEpoch);
 
   /* ── Generic API caller ── */
   const callApi = async (key: string, url: string, body: object) => {
@@ -277,8 +325,6 @@ function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
   const handleResumeTimer = () =>
     callApi("resume-timer", "/api/kpi/timer/resume", { agentId: agent._id, date: today() });
 
-  const sessionEnded = !!(session?.sessionEndEpoch);
-
   return (
     <>
       {confirm && (
@@ -301,10 +347,10 @@ function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
 
         {/* Top bar accent */}
         <div className={`h-1 w-full ${
-          isOnBreak ? "bg-amber-400" :
-          isActive ? "bg-emerald-500" :
+          isOnBreak    ? "bg-amber-400" :
+          isActive     ? "bg-emerald-500" :
           sessionEnded ? "bg-slate-300 dark:bg-zinc-600" :
-          "bg-slate-200 dark:bg-zinc-700"
+                         "bg-slate-200 dark:bg-zinc-700"
         }`} />
 
         {/* Card header */}
@@ -332,22 +378,17 @@ function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
                 <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
                 Clocked out
               </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-400 dark:text-zinc-500 text-[10px] font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                Idle
-              </span>
-            )}
+            ) : null}
           </div>
         </div>
 
         {/* TX stats */}
         <div className="grid grid-cols-4 divide-x divide-slate-100 dark:divide-zinc-800 border-b border-slate-100 dark:border-zinc-800">
           {[
-            { label: "TX",   value: totalTx, color: "text-slate-700 dark:text-zinc-200" },
-            { label: "Done", value: done,    color: "text-emerald-600 dark:text-emerald-400" },
-            { label: "Hold", value: hold,    color: "text-blue-500 dark:text-blue-400" },
-            { label: "Esc",  value: esc,     color: "text-purple-600 dark:text-purple-400" },
+            { label: "TX",   value: totalTx, color: "text-slate-700 dark:text-zinc-200"         },
+            { label: "Done", value: done,    color: "text-emerald-600 dark:text-emerald-400"     },
+            { label: "Hold", value: hold,    color: "text-blue-500 dark:text-blue-400"           },
+            { label: "Esc",  value: esc,     color: "text-purple-600 dark:text-purple-400"       },
           ].map(s => (
             <div key={s.label} className="py-2.5 text-center">
               <p className={`text-base font-bold leading-none ${s.color}`}>{s.value}</p>
@@ -363,7 +404,9 @@ function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
               <Zap size={9} className="text-emerald-500" />
               Productive
               {timerExists && timerPaused && (
-                <span className="ml-1 px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 text-[9px] font-bold">PAUSED</span>
+                <span className="ml-1 px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 text-[9px] font-bold">
+                  PAUSED
+                </span>
               )}
             </span>
             <span className="text-[11px] font-mono font-semibold text-emerald-600 dark:text-emerald-400">
@@ -373,10 +416,10 @@ function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
           <div className="h-1.5 rounded-full bg-slate-100 dark:bg-zinc-800 overflow-hidden">
             <div
               className={`h-full rounded-full transition-all duration-1000 ${
-                timerPaused ? "bg-amber-400" :
-                isOnBreak ? "bg-amber-400" :
-                isActive ? "bg-emerald-500" :
-                "bg-slate-300 dark:bg-zinc-600"
+                timerPaused  ? "bg-amber-400" :
+                isOnBreak    ? "bg-amber-400" :
+                isActive     ? "bg-emerald-500" :
+                               "bg-slate-300 dark:bg-zinc-600"
               }`}
               style={{ width: `${prodPct}%` }}
             />
@@ -433,22 +476,42 @@ function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
           <p className="text-[9px] font-bold uppercase tracking-widest text-slate-300 dark:text-zinc-600 mb-2">Actions</p>
           <div className="flex flex-wrap gap-1.5">
             {!session && (
-              <ActionButton icon={LogIn} label="Start Session" variant="emerald" onClick={handleStartSession} loading={actionLoading === "start-session"} small />
+              <ActionButton
+                icon={LogIn} label="Start Session" variant="emerald"
+                onClick={handleStartSession} loading={actionLoading === "start-session"} small
+              />
             )}
             {session && !sessionEnded && (
-              <ActionButton icon={LogOut} label="Clock Out" variant="red" onClick={handleEndSession} loading={actionLoading === "end-session"} small />
+              <ActionButton
+                icon={LogOut} label="Clock Out" variant="red"
+                onClick={handleEndSession} loading={actionLoading === "end-session"} small
+              />
             )}
             {session && !sessionEnded && !isOnBreak && (
-              <ActionButton icon={Coffee} label="Start Break" variant="amber" onClick={handleStartBreak} loading={actionLoading === "start-break"} small />
+              <ActionButton
+                icon={Coffee} label="Start Break" variant="amber"
+                onClick={handleStartBreak} loading={actionLoading === "start-break"} small
+              />
             )}
             {isOnBreak && (
-              <ActionButton icon={Play} label="End Break" variant="emerald" onClick={handleEndBreak} loading={actionLoading === "end-break"} small />
+              <ActionButton
+                icon={Play} label="End Break" variant="emerald"
+                onClick={handleEndBreak} loading={actionLoading === "end-break"} small
+              />
             )}
+            {/* Pause timer: only when timer exists, is not paused, agent is active, and not on break */}
             {timerExists && !timerPaused && isActive && !isOnBreak && (
-              <ActionButton icon={Pause} label="Pause Timer" variant="slate" onClick={handlePauseTimer} loading={actionLoading === "pause-timer"} small />
+              <ActionButton
+                icon={Pause} label="Pause Timer" variant="slate"
+                onClick={handlePauseTimer} loading={actionLoading === "pause-timer"} small
+              />
             )}
+            {/* Resume timer: only when timer exists and is paused */}
             {timerExists && timerPaused && (
-              <ActionButton icon={Play} label="Resume Timer" variant="indigo" onClick={handleResumeTimer} loading={actionLoading === "resume-timer"} small />
+              <ActionButton
+                icon={Play} label="Resume Timer" variant="indigo"
+                onClick={handleResumeTimer} loading={actionLoading === "resume-timer"} small
+              />
             )}
             {sessionEnded && (
               <p className="text-[10px] text-slate-400 dark:text-zinc-500 italic py-1">Session ended for today.</p>
@@ -461,27 +524,60 @@ function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
 }
 
 /* ═══════════════════════════════════
+   ─── Helpers for timer state
+═══════════════════════════════════ */
+interface LiveTimerState {
+  productiveSeconds: number;
+  timerPaused: boolean;
+  timerExists: boolean;
+}
+
+function extractTimerState(timerRecord: TimerRecord | null | undefined): LiveTimerState {
+  if (!timerRecord) {
+    return { productiveSeconds: 0, timerPaused: false, timerExists: false };
+  }
+  return {
+    productiveSeconds: calcProductiveSeconds(timerRecord),
+    timerPaused: timerRecord.timerPaused ?? false,
+    timerExists: true,
+  };
+}
+
+/* ═══════════════════════════════════
    ─── Main Activity Page
 ═══════════════════════════════════ */
 export default function ActivityPage() {
-  const [transactions, setTransactions]         = useState<Transaction[]>([]);
-  const [timerMap, setTimerMap]                 = useState<Record<string, TimerRecord>>({});
-  const [agents, setAgents]                     = useState<Agent[]>([]);
-  const [sessions, setSessions]                 = useState<Record<string, AgentSession | null>>({});
-  const [agentTxMap, setAgentTxMap]             = useState<Record<string, Transaction[]>>({});
-  const [agentProductiveSeconds, setAgentProductiveSeconds] = useState<Record<string, number>>({});
-  const [agentTimerPaused, setAgentTimerPaused] = useState<Record<string, boolean>>({});
-  const [loading, setLoading]                   = useState(true);
-  const [statusLoading, setStatusLoading]       = useState(true);
-  const [from, setFrom]                         = useState(daysAgo(6));
-  const [to, setTo]                             = useState(today());
-  const [filterAgent, setFilterAgent]           = useState("all");
-  const [filterStatus, setFilterStatus]         = useState("all");
-  const [filterCategory, setFilterCategory]     = useState("all");
-  const [page, setPage]                         = useState(1);
-  const [view, setView]                         = useState<"timeline" | "status">("status");
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  /**
+   * timerMap stores the *raw* timer records from the API (no live offset applied).
+   * Live seconds are computed on render via calcProductiveSeconds().
+   * This ensures the timeline and status views always use the same formula.
+   */
+  const [timerMap, setTimerMap] = useState<Record<string, TimerRecord>>({});
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [sessions, setSessions] = useState<Record<string, AgentSession | null>>({});
+  const [agentTxMap, setAgentTxMap] = useState<Record<string, Transaction[]>>({});
+  /**
+   * Raw timer records per agent for the status view (today only).
+   * Live seconds are derived at render time; we never store a pre-computed
+   * "live" value here to avoid stale state between auto-refresh ticks.
+   */
+  const [agentTimerMap, setAgentTimerMap] = useState<Record<string, TimerRecord | null>>({});
+  const [loading, setLoading] = useState(true);
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [from, setFrom] = useState(daysAgo(6));
+  const [to, setTo] = useState(today());
+  const [filterAgent, setFilterAgent] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterCategory, setFilterCategory] = useState("all");
+  const [page, setPage] = useState(1);
+  const [view, setView] = useState<"timeline" | "status">("status");
   const PAGE_SIZE = 15;
-  const tick = useTick(10000);
+
+  // 1-second tick for live productive-time display in the timeline agent pills
+  useTick(1000);
+  // 10-second tick triggers the background status refresh
+  const statusTick = useTick(10000);
 
   /* ── Fetch timeline transactions and timers ── */
   useEffect(() => {
@@ -490,41 +586,31 @@ export default function ActivityPage() {
       fetch(`/api/kpi/transactions?from=${from}&to=${to}`).then(r => r.json()),
       fetch("/api/kpi/agents").then(r => r.json()),
       fetch(`/api/kpi/productivity-timers?from=${from}&to=${to}`).then(r => r.json()),
-    ]).then(([txData, agentData, timerData]) => {
-      const allTx: Transaction[] = txData.transactions ?? [];
-      
-      // Filter out timer records from transactions
-      const realTx = allTx.filter(t => t.docType !== "__PROD_TIMER__");
-      
-      // Build timer map with live seconds calculation
-      const timers: TimerRecord[] = timerData.timers ?? [];
-      const now = Date.now();
-      const timerMapData: Record<string, TimerRecord> = {};
-      
-      for (const timer of timers) {
-        // Calculate live seconds if timer is running
-        let liveSecs = timer.productiveSeconds;
-        if (timer.timerStartEpoch && !timer.timerPaused) {
-          liveSecs += Math.floor((now - timer.timerStartEpoch) / 1000);
+    ])
+      .then(([txData, agentData, timerData]) => {
+        const allTx: Transaction[] = txData.transactions ?? [];
+        const realTx = allTx.filter(t => t.docType !== "__PROD_TIMER__");
+
+        // Store raw timer records; live seconds computed at render time.
+        const timers: TimerRecord[] = timerData.timers ?? [];
+        const rawTimerMap: Record<string, TimerRecord> = {};
+        for (const timer of timers) {
+          rawTimerMap[timer.agentId] = timer;
         }
-        timerMapData[timer.agentId] = {
-          ...timer,
-          productiveSeconds: liveSecs,
-        };
-      }
-      
-      setTransactions(realTx);
-      setTimerMap(timerMapData);
-      setAgents(agentData.agents ?? []);
-      setLoading(false);
-      setPage(1);
-    }).catch(err => {
-      console.error("Failed to fetch data:", err);
-      setLoading(false);
-    });
+
+        setTransactions(realTx);
+        setTimerMap(rawTimerMap);
+        setAgents(agentData.agents ?? []);
+        setLoading(false);
+        setPage(1);
+      })
+      .catch(err => {
+        console.error("Failed to fetch data:", err);
+        setLoading(false);
+      });
   }, [from, to]);
 
-  /* ── Fetch live agent status (includes timer and session) ── */
+  /* ── Fetch live agent status (runs once agents are loaded, then every 10s) ── */
   const fetchAgentStatus = useCallback(async (agentList: Agent[]) => {
     if (agentList.length === 0) return;
     setStatusLoading(true);
@@ -537,59 +623,39 @@ export default function ActivityPage() {
           fetch(`/api/kpi/session?agentId=${agent._id}&date=${dateStr}`).then(r => r.json()),
           fetch(`/api/kpi/productivity-timer?agentId=${agent._id}&date=${dateStr}`).then(r => r.json()),
         ]);
-        
-        // Calculate live productive seconds from timer record
-        const timerRecord = timerRes.record;
-        let productiveSeconds = 0;
-        let timerPaused = false;
-        let timerExists = false;
-        
-        if (timerRecord) {
-          timerExists = true;
-          timerPaused = timerRecord.timerPaused ?? false;
-          productiveSeconds = timerRecord.productiveSeconds ?? 0;
-          if (timerRecord.timerStartEpoch && !timerRecord.timerPaused) {
-            productiveSeconds += Math.floor((Date.now() - timerRecord.timerStartEpoch) / 1000);
-          }
-        }
-        
+
         return {
           agentId: agent._id,
-          txs: txRes.transactions ?? [],
-          session: sessionRes.session ?? null,
-          productiveSeconds,
-          timerPaused,
-          timerExists,
+          txs: (txRes.transactions ?? []) as Transaction[],
+          session: (sessionRes.session ?? null) as AgentSession | null,
+          // Store the raw record; live seconds derived at render time.
+          timerRecord: (timerRes.record ?? null) as TimerRecord | null,
         };
       })
     );
 
     const txMap: Record<string, Transaction[]> = {};
     const sessionMap: Record<string, AgentSession | null> = {};
-    const productiveMap: Record<string, number> = {};
-    const timerPausedMap: Record<string, boolean> = {};
-    const timerExistsMap: Record<string, boolean> = {};
-    
-    results.forEach(r => {
-      txMap[r.agentId] = r.txs;
-      sessionMap[r.agentId] = r.session;
-      productiveMap[r.agentId] = r.productiveSeconds;
-      timerPausedMap[r.agentId] = r.timerPaused;
-      timerExistsMap[r.agentId] = r.timerExists;
-    });
-    
+    const timerRecordMap: Record<string, TimerRecord | null> = {};
+
+    for (const r of results) {
+      txMap[r.agentId]          = r.txs;
+      sessionMap[r.agentId]     = r.session;
+      timerRecordMap[r.agentId] = r.timerRecord;
+    }
+
     setAgentTxMap(txMap);
     setSessions(sessionMap);
-    setAgentProductiveSeconds(productiveMap);
-    setAgentTimerPaused(timerPausedMap);
+    setAgentTimerMap(timerRecordMap);
     setStatusLoading(false);
   }, []);
 
+  // Trigger full status refresh when agents first load or on 10s tick.
   useEffect(() => {
     if (agents.length > 0) fetchAgentStatus(agents);
-  }, [agents, fetchAgentStatus, tick]);
+  }, [agents, fetchAgentStatus, statusTick]);
 
-  /* Per-agent refresh after actions */
+  /* Per-agent refresh after manual actions (avoids full-team re-fetch) */
   const refreshAgent = useCallback(async (agentId: string) => {
     const dateStr = today();
     const [txRes, sessionRes, timerRes] = await Promise.all([
@@ -597,57 +663,50 @@ export default function ActivityPage() {
       fetch(`/api/kpi/session?agentId=${agentId}&date=${dateStr}`).then(r => r.json()),
       fetch(`/api/kpi/productivity-timer?agentId=${agentId}&date=${dateStr}`).then(r => r.json()),
     ]);
-    
-    const timerRecord = timerRes.record;
-    let productiveSeconds = 0;
-    let timerPaused = false;
-    let timerExists = false;
-    
-    if (timerRecord) {
-      timerExists = true;
-      timerPaused = timerRecord.timerPaused ?? false;
-      productiveSeconds = timerRecord.productiveSeconds ?? 0;
-      if (timerRecord.timerStartEpoch && !timerRecord.timerPaused) {
-        productiveSeconds += Math.floor((Date.now() - timerRecord.timerStartEpoch) / 1000);
-      }
-    }
-    
-    setAgentTxMap(prev => ({ ...prev, [agentId]: txRes.transactions ?? [] }));
-    setSessions(prev  => ({ ...prev, [agentId]: sessionRes.session ?? null }));
-    setAgentProductiveSeconds(prev => ({ ...prev, [agentId]: productiveSeconds }));
-    setAgentTimerPaused(prev => ({ ...prev, [agentId]: timerPaused }));
+
+    setAgentTxMap(prev    => ({ ...prev, [agentId]: txRes.transactions ?? [] }));
+    setSessions(prev      => ({ ...prev, [agentId]: sessionRes.session ?? null }));
+    setAgentTimerMap(prev => ({ ...prev, [agentId]: timerRes.record ?? null }));
   }, []);
 
-  /* ── Build agent statuses ── */
+  /* ── Build agent statuses for the status view ── */
   const agentStatuses: AgentStatus[] = agents.map(agent => {
-    const session   = sessions[agent._id] ?? null;
-    const txs       = agentTxMap[agent._id] ?? [];
+    const session = sessions[agent._id] ?? null;
+    const txs     = agentTxMap[agent._id] ?? [];
+
     const isOnBreak = !!(session?.breaks.find(b => !b.endEpoch));
-    const isActive  = !!(session && !session.sessionEndEpoch && !isOnBreak);
-    
-    const productiveSeconds = agentProductiveSeconds[agent._id] ?? 0;
-    const timerPaused = agentTimerPaused[agent._id] ?? false;
-    const timerExists = productiveSeconds > 0 || timerPaused;
-    
-    return { 
-      agent, 
-      session, 
-      transactions: txs, 
-      productiveSeconds, 
+    // isActive: session exists and open, OR timer is currently running (timerStartEpoch set and not paused)
+    const timerRaw  = agentTimerMap[agent._id];
+    const timerIsRunning = !!(timerRaw && timerRaw.timerStartEpoch && !timerRaw.timerPaused);
+    const isActive  = !!(
+      (session && !session.sessionEndEpoch && !isOnBreak) || timerIsRunning
+    );
+
+    const { productiveSeconds, timerPaused, timerExists } =
+      extractTimerState(timerRaw);
+
+    return {
+      agent,
+      session,
+      transactions: txs,
+      productiveSeconds,
       timerPaused,
       timerExists,
-      liveBreakSeconds: 0, 
-      isOnBreak, 
-      isActive 
+      isOnBreak,
+      isActive,
     };
   });
 
-  /* ── Team summary (live status view) ── */
-  const activeCount  = agentStatuses.filter(s => s.isActive).length;
-  const breakCount   = agentStatuses.filter(s => s.isOnBreak).length;
-  const idleCount    = agentStatuses.filter(s => !s.isActive && !s.isOnBreak).length;
+  /* ── Team summary counts ── */
+  const activeCount     = agentStatuses.filter(s => s.isActive).length;
+  const breakCount      = agentStatuses.filter(s => s.isOnBreak).length;
+  const clockedOutCount = agentStatuses.filter(s => s.session && !!s.session.sessionEndEpoch).length;
+  // Sum of live productive seconds across all currently active agents (updates every 1s via useTick)
+  const totalActiveProductiveSec = agentStatuses
+    .filter(s => s.isActive)
+    .reduce((sum, s) => sum + s.productiveSeconds, 0);
 
-  // Exclude __PROD_TIMER__ from today's TX count
+  // Today's TX count excludes __PROD_TIMER__ pseudo-records
   const totalTodayTx = Object.values(agentTxMap)
     .flat()
     .filter(t => t.docType !== "__PROD_TIMER__")
@@ -655,26 +714,29 @@ export default function ActivityPage() {
 
   /* ── Timeline filters ── */
   const filtered = transactions.filter(tx => {
-    if (filterAgent   !== "all" && tx.agentName                    !== filterAgent)   return false;
-    if (filterStatus  !== "all" && tx.status                       !== filterStatus)  return false;
-    if (filterCategory !== "all" && (tx.taskCategory ?? "Production") !== filterCategory) return false;
+    if (filterAgent    !== "all" && tx.agentName                          !== filterAgent)    return false;
+    if (filterStatus   !== "all" && tx.status                             !== filterStatus)   return false;
+    if (filterCategory !== "all" && (tx.taskCategory ?? "Production")     !== filterCategory) return false;
     return true;
   });
 
   const paginated = filtered.slice(0, page * PAGE_SIZE);
   const hasMore   = filtered.length > paginated.length;
 
-  /* ── Timeline stats ── */
+  /* ── Timeline aggregate stats ── */
   const completions    = transactions.filter(t => t.status === "COMPLETION").length;
   const escalations    = transactions.filter(t => t.status === "ESCALATION").length;
   const holds          = transactions.filter(t => t.status === "HOLD").length;
-  const completionRate = transactions.length ? Math.round((completions / transactions.length) * 100) : 0;
-  const totalTat       = transactions.reduce((s, t) => s + (t.tat ?? 0), 0);
+  const completionRate = transactions.length
+    ? Math.round((completions / transactions.length) * 100)
+    : 0;
+  const totalTat = transactions.reduce((s, t) => s + (t.tat ?? 0), 0);
 
-  // Sum productive seconds from timerMap
-  const totalProductiveSec = Object.values(timerMap).reduce((sum, timer) => {
-    return sum + (timer?.productiveSeconds ?? 0);
-  }, 0);
+  // Total productive seconds across all agents for the selected date range
+  const totalProductiveSec = Object.values(timerMap).reduce(
+    (sum, timer) => sum + calcProductiveSeconds(timer),
+    0
+  );
 
   /* ── Group by date for timeline ── */
   const byDate: Record<string, Transaction[]> = {};
@@ -734,10 +796,10 @@ export default function ActivityPage() {
             {/* Team summary bar */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
               {[
-                { label: "Working",      value: activeCount,  icon: Play,     color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800", dot: "bg-emerald-500", ping: activeCount > 0 },
-                { label: "On break",     value: breakCount,   icon: Coffee,   color: "text-amber-600 dark:text-amber-400",     bg: "bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800",         dot: "bg-amber-500",  ping: breakCount > 0  },
-                { label: "Idle/offline", value: idleCount,    icon: Clock,    color: "text-slate-500 dark:text-zinc-400",      bg: "bg-slate-100 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700",              dot: "bg-slate-400",  ping: false           },
-                { label: "TX today",     value: totalTodayTx, icon: Activity, color: "text-indigo-600 dark:text-indigo-400",   bg: "bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800",      dot: "bg-indigo-500", ping: false           },
+                { label: "Working",     value: activeCount,     icon: Play,     color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800", dot: "bg-emerald-500", ping: activeCount > 0, sub: formatHms(totalActiveProductiveSec) },
+                { label: "On break",    value: breakCount,      icon: Coffee,   color: "text-amber-600 dark:text-amber-400",     bg: "bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800",         dot: "bg-amber-500",  ping: breakCount > 0  },
+                { label: "Clocked out", value: clockedOutCount, icon: LogOut,   color: "text-rose-500 dark:text-rose-400",       bg: "bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800",              dot: "bg-rose-400",   ping: false           },
+                { label: "TX today",    value: totalTodayTx,    icon: Activity, color: "text-indigo-600 dark:text-indigo-400",   bg: "bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800",      dot: "bg-indigo-500", ping: false           },
               ].map(s => {
                 const Icon = s.icon;
                 return (
@@ -746,8 +808,13 @@ export default function ActivityPage() {
                       <span className={`w-2.5 h-2.5 rounded-full block ${s.dot}`} />
                       {s.ping && <span className={`absolute inset-0 rounded-full ${s.dot} animate-ping opacity-60`} />}
                     </div>
-                    <div className="min-w-0">
-                      <p className={`text-2xl font-bold leading-none ${s.color}`}>{s.value}</p>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline gap-2">
+                        <p className={`text-2xl font-bold leading-none ${s.color}`}>{s.value}</p>
+                        {s.sub && (
+                          <p className={`text-xs font-mono font-semibold leading-none ${s.color} opacity-80`}>{s.sub}</p>
+                        )}
+                      </div>
                       <p className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide mt-0.5">{s.label}</p>
                     </div>
                   </div>
@@ -755,10 +822,30 @@ export default function ActivityPage() {
               })}
             </div>
 
+            {/* Legend */}
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-4 px-1">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Legend</span>
+              {[
+                { dot: "bg-emerald-500", bar: "bg-emerald-500",                      label: "Working — session open, timer running"  },
+                { dot: "bg-amber-400",   bar: "bg-amber-400",                        label: "On break or timer paused"               },
+                { dot: "bg-slate-400",   bar: "bg-slate-300 dark:bg-zinc-600",       label: "No session or clocked out"              },
+              ].map(l => (
+                <div key={l.label} className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg px-2 py-1">
+                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${l.dot}`} />
+                    <div className="w-10 h-1.5 rounded-full bg-slate-100 dark:bg-zinc-800 overflow-hidden">
+                      <div className={`h-full w-3/5 rounded-full ${l.bar}`} />
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-slate-500 dark:text-zinc-400">{l.label}</span>
+                </div>
+              ))}
+            </div>
+
             {/* Agent cards grid */}
             {statusLoading && agents.length === 0 ? (
-  <PageSkeleton />
-) : agents.length === 0 ? (
+              <PageSkeleton />
+            ) : agents.length === 0 ? (
               <div className="text-center py-16 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl">
                 <Users size={28} className="text-slate-300 dark:text-zinc-600 mx-auto mb-3" />
                 <p className="text-slate-500 dark:text-zinc-400 text-sm">No agents found.</p>
@@ -791,33 +878,50 @@ export default function ActivityPage() {
             <div className="flex flex-wrap items-center gap-2 mb-6">
               <div className="flex items-center gap-2">
                 <span className="text-xs text-slate-400 dark:text-zinc-500">FROM</span>
-                <input type="date" value={from} onChange={e => setFrom(e.target.value)}
-                  className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm text-slate-700 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all" />
+                <input
+                  type="date" value={from}
+                  onChange={e => setFrom(e.target.value)}
+                  className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm text-slate-700 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                />
                 <span className="text-xs text-slate-400 dark:text-zinc-500">TO</span>
-                <input type="date" value={to} onChange={e => setTo(e.target.value)}
-                  className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm text-slate-700 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all" />
-                <button onClick={() => { setFrom(today()); setTo(today()); }}
-                  className="px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-500 dark:text-indigo-400 text-xs font-semibold hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors">
+                <input
+                  type="date" value={to}
+                  onChange={e => setTo(e.target.value)}
+                  className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm text-slate-700 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                />
+                <button
+                  onClick={() => { setFrom(today()); setTo(today()); }}
+                  className="px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-500 dark:text-indigo-400 text-xs font-semibold hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
+                >
                   Today
                 </button>
               </div>
 
               <div className="flex items-center gap-2 ml-auto flex-wrap">
-                <select value={filterAgent} onChange={e => { setFilterAgent(e.target.value); setPage(1); }}
-                  className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-xs text-slate-700 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 transition-all">
+                <select
+                  value={filterAgent}
+                  onChange={e => { setFilterAgent(e.target.value); setPage(1); }}
+                  className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-xs text-slate-700 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 transition-all"
+                >
                   <option value="all">All agents</option>
                   {uniqueAgents.map(a => <option key={a} value={a}>{a}</option>)}
                 </select>
-                <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }}
-                  className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-xs text-slate-700 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 transition-all">
+                <select
+                  value={filterStatus}
+                  onChange={e => { setFilterStatus(e.target.value); setPage(1); }}
+                  className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-xs text-slate-700 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 transition-all"
+                >
                   <option value="all">All statuses</option>
                   <option value="COMPLETION">Completion</option>
                   <option value="PENDING">Pending</option>
                   <option value="HOLD">Hold</option>
                   <option value="ESCALATION">Escalation</option>
                 </select>
-                <select value={filterCategory} onChange={e => { setFilterCategory(e.target.value); setPage(1); }}
-                  className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-xs text-slate-700 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 transition-all">
+                <select
+                  value={filterCategory}
+                  onChange={e => { setFilterCategory(e.target.value); setPage(1); }}
+                  className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-xs text-slate-700 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 transition-all"
+                >
                   <option value="all">All categories</option>
                   <option value="Production">Production</option>
                   <option value="Non-Production">Non-Production</option>
@@ -828,12 +932,12 @@ export default function ActivityPage() {
             {/* Stats row */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
               {[
-                { label: "Total TX",        value: transactions.length, icon: Activity,      color: "text-slate-700 dark:text-zinc-200"    },
-                { label: "Completion rate", value: `${completionRate}%`, icon: CheckCircle2, color: "text-green-600 dark:text-green-400"   },
-                { label: "Hold",            value: holds,                icon: PauseCircle,  color: "text-blue-500 dark:text-blue-400"     },
-                { label: "Escalations",     value: escalations,          icon: AlertTriangle,color: "text-purple-600 dark:text-purple-400" },
-                { label: "Total TAT",       value: formatHms(totalTat),  icon: Clock,        color: "text-indigo-600 dark:text-indigo-400" },
-                { label: "Productive time", value: formatHms(totalProductiveSec), icon: Timer, color: "text-cyan-600 dark:text-cyan-400"  },
+                { label: "Total TX",        value: transactions.length,      icon: Activity,      color: "text-slate-700 dark:text-zinc-200"    },
+                { label: "Completion rate", value: `${completionRate}%`,     icon: CheckCircle2,  color: "text-green-600 dark:text-green-400"   },
+                { label: "Hold",            value: holds,                    icon: PauseCircle,   color: "text-blue-500 dark:text-blue-400"     },
+                { label: "Escalations",     value: escalations,              icon: AlertTriangle, color: "text-purple-600 dark:text-purple-400" },
+                { label: "Total TAT",       value: formatHms(totalTat),      icon: Clock,         color: "text-indigo-600 dark:text-indigo-400" },
+                { label: "Productive time", value: formatHms(totalProductiveSec), icon: Timer,   color: "text-cyan-600 dark:text-cyan-400"     },
               ].map(s => {
                 const Icon = s.icon;
                 return (
@@ -854,16 +958,17 @@ export default function ActivityPage() {
             {agents.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-6">
                 {agents.map(agent => {
-                  const av          = avatarColor(agent.name);
-                  const agentTx     = transactions.filter(t => t.agentName === agent.name);
-                  const agentTat    = agentTx.reduce((s, t) => s + (t.tat ?? 0), 0);
-                  const agentCompl  = agentTx.filter(t => t.status === "COMPLETION").length;
-                  const agentHold   = agentTx.filter(t => t.status === "HOLD").length;
-                  const isSelected  = filterAgent === agent.name;
+                  const av         = avatarColor(agent.name);
+                  const agentTx    = transactions.filter(t => t.agentName === agent.name);
+                  const agentTat   = agentTx.reduce((s, t) => s + (t.tat ?? 0), 0);
+                  const agentCompl = agentTx.filter(t => t.status === "COMPLETION").length;
+                  const agentHold  = agentTx.filter(t => t.status === "HOLD").length;
+                  const isSelected = filterAgent === agent.name;
 
-                  // Get timer record for this agent
-                  const timerRec = timerMap[agent._id];
-                  const agentProd = timerRec?.productiveSeconds ?? null;
+                  // Productive time for this agent across the selected date range
+                  const agentProd = timerMap[agent._id]
+                    ? calcProductiveSeconds(timerMap[agent._id])
+                    : null;
 
                   return (
                     <button
@@ -879,7 +984,9 @@ export default function ActivityPage() {
                         {agent.name.slice(0, 2).toUpperCase()}
                       </div>
                       <span>{agent.name}</span>
-                      {agent.group && <span className="text-slate-400 dark:text-zinc-500">· {agent.group}</span>}
+                      {agent.group && (
+                        <span className="text-slate-400 dark:text-zinc-500">· {agent.group}</span>
+                      )}
                       <span className="text-slate-300 dark:text-zinc-600">|</span>
                       <span>{agentTx.length} TX</span>
                       <span className="text-green-600 dark:text-green-400">{agentCompl} done</span>
@@ -888,6 +995,7 @@ export default function ActivityPage() {
                           <PauseCircle size={9} />{agentHold}
                         </span>
                       )}
+                      {/* Show productive time if available, otherwise fall back to TAT */}
                       {agentProd !== null ? (
                         <span className="text-emerald-600 dark:text-emerald-400 font-mono flex items-center gap-0.5">
                           <Zap size={9} />{formatHms(agentProd)}
@@ -905,8 +1013,8 @@ export default function ActivityPage() {
 
             {/* Timeline */}
             {loading ? (
-  <PageSkeleton />
-) : filtered.length === 0 ? (
+              <PageSkeleton />
+            ) : filtered.length === 0 ? (
               <div className="text-center py-16 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl">
                 <Activity size={28} className="text-slate-300 dark:text-zinc-600 mx-auto mb-3" />
                 <p className="text-slate-500 dark:text-zinc-400 text-sm">No transactions found for this period.</p>
@@ -917,7 +1025,9 @@ export default function ActivityPage() {
                 {sortedDates.map(date => (
                   <div key={date}>
                     <div className="flex items-center gap-3 mb-3">
-                      <p className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">{relativeDate(date)}</p>
+                      <p className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">
+                        {relativeDate(date)}
+                      </p>
                       <div className="flex-1 h-px bg-slate-200 dark:bg-zinc-700" />
                       <span className="text-[11px] text-slate-400 dark:text-zinc-500">{byDate[date].length} tx</span>
                     </div>
@@ -935,7 +1045,7 @@ export default function ActivityPage() {
                                 <div className={`w-10 h-10 rounded-xl border flex items-center justify-center z-10 transition-all group-hover:scale-105 ${cfg.bg}`}>
                                   {isHold
                                     ? <PauseCircle size={13} className={cfg.color} />
-                                    : <FileText size={13} className={cfg.color} />
+                                    : <FileText    size={13} className={cfg.color} />
                                   }
                                 </div>
                               </div>
@@ -950,7 +1060,11 @@ export default function ActivityPage() {
                                         {cfg.label}
                                       </span>
                                       {tx.taskCategory && (
-                                        <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-semibold ${tx.taskCategory === "Production" ? "bg-green-50 dark:bg-green-950/30 text-green-600 dark:text-green-400" : "bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400"}`}>
+                                        <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-semibold ${
+                                          tx.taskCategory === "Production"
+                                            ? "bg-green-50 dark:bg-green-950/30 text-green-600 dark:text-green-400"
+                                            : "bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400"
+                                        }`}>
                                           {tx.taskCategory}
                                         </span>
                                       )}
@@ -961,7 +1075,9 @@ export default function ActivityPage() {
                                     </p>
                                   </div>
                                   <div className="text-right flex-shrink-0">
-                                    <p className="text-xs font-mono text-indigo-500 dark:text-indigo-400 font-semibold">{formatHms(tx.tat)}</p>
+                                    <p className="text-xs font-mono text-indigo-500 dark:text-indigo-400 font-semibold">
+                                      {formatHms(tx.tat)}
+                                    </p>
                                     <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">
                                       {tx.startTime}{tx.endTime ? ` → ${tx.endTime}` : ""}
                                     </p>
@@ -1005,8 +1121,10 @@ export default function ActivityPage() {
             {/* Load more */}
             {hasMore && (
               <div className="mt-6 flex justify-center">
-                <button onClick={() => setPage(p => p + 1)}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200 hover:border-slate-300 dark:hover:border-zinc-600 transition-colors text-sm font-medium">
+                <button
+                  onClick={() => setPage(p => p + 1)}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200 hover:border-slate-300 dark:hover:border-zinc-600 transition-colors text-sm font-medium"
+                >
                   <ChevronDown size={14} />
                   Load more ({filtered.length - paginated.length} remaining)
                 </button>
@@ -1033,8 +1151,7 @@ export default function ActivityPage() {
                         if (filterAgent === "all") return formatHms(totalProductiveSec);
                         const agent = agents.find(a => a.name === filterAgent);
                         if (!agent) return "—";
-                        const timer = timerMap[agent._id];
-                        return timer ? formatHms(timer.productiveSeconds) : "—";
+                        return formatHms(calcProductiveSeconds(timerMap[agent._id]));
                       })()}
                     </p>
                     <p className="text-[11px] text-slate-400 dark:text-zinc-500 uppercase tracking-wide mt-0.5">Productive time</p>
