@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 import {
@@ -9,6 +9,7 @@ import {
   Pause, ChevronDown, ChevronRight, ListPlus, X, Play, Square,
   Timer, PauseCircle, Check, Info, AlertCircle,
 } from "lucide-react";
+import { SnackbarProvider, useSnackbar } from "@/contexts/SnackbarContext";
 
 /* ─── Types ─── */
 interface Agent { _id: string; name: string; group?: string }
@@ -81,102 +82,6 @@ interface EndTimerConfirmation {
   netSeconds: number;
 }
 
-/* ============================================================
-   SNACKBAR CONTEXT & PROVIDER
-   ============================================================ */
-
-type SnackbarType = "success" | "error" | "info" | "warning";
-
-interface SnackbarMessage {
-  id: string;
-  type: SnackbarType;
-  title: string;
-  message?: string;
-  duration?: number;
-}
-
-interface SnackbarContextValue {
-  showSnackbar: (type: SnackbarType, title: string, message?: string, duration?: number) => void;
-  hideSnackbar: (id: string) => void;
-}
-
-const SnackbarContext = createContext<SnackbarContextValue | null>(null);
-
-export function useSnackbar() {
-  const context = useContext(SnackbarContext);
-  if (!context) {
-    throw new Error("useSnackbar must be used within a SnackbarProvider");
-  }
-  return context;
-}
-
-function SnackbarProvider({ children }: { children: React.ReactNode }) {
-  const [messages, setMessages] = useState<SnackbarMessage[]>([]);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const showSnackbar = useCallback((type: SnackbarType, title: string, message?: string, duration = 4000) => {
-    const id = Math.random().toString(36).slice(2, 10);
-    setMessages((prev) => [...prev, { id, type, title, message, duration }]);
-    setTimeout(() => {
-      setMessages((prev) => prev.filter((m) => m.id !== id));
-    }, duration);
-  }, []);
-
-  const hideSnackbar = useCallback((id: string) => {
-    setMessages((prev) => prev.filter((m) => m.id !== id));
-  }, []);
-
-  const getIcon = (type: SnackbarType) => {
-    switch (type) {
-      case "success": return <CheckCircle2 size={16} className="text-emerald-500" />;
-      case "error": return <AlertCircle size={16} className="text-red-500" />;
-      case "warning": return <AlertTriangle size={16} className="text-amber-500" />;
-      case "info": return <Info size={16} className="text-sky-500" />;
-    }
-  };
-
-  const getStyles = (type: SnackbarType) => {
-    switch (type) {
-      case "success": return "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/50 dark:border-emerald-800 dark:text-emerald-200";
-      case "error": return "bg-red-50 border-red-200 text-red-800 dark:bg-red-950/50 dark:border-red-800 dark:text-red-200";
-      case "warning": return "bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950/50 dark:border-amber-800 dark:text-amber-200";
-      case "info": return "bg-sky-50 border-sky-200 text-sky-800 dark:bg-sky-950/50 dark:border-sky-800 dark:text-sky-200";
-    }
-  };
-
-  return (
-    <SnackbarContext.Provider value={{ showSnackbar, hideSnackbar }}>
-      {children}
-      {mounted && typeof window !== "undefined" && createPortal(
-        <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-[100] flex flex-col gap-2 items-center">
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex items-start gap-3 px-4 py-3 rounded-xl border shadow-lg animate-in slide-in-from-bottom-5 duration-300 max-w-sm ${getStyles(msg.type)}`}
-            >
-              {getIcon(msg.type)}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold">{msg.title}</p>
-                {msg.message && <p className="text-xs opacity-80 mt-0.5">{msg.message}</p>}
-              </div>
-              <button
-                onClick={() => hideSnackbar(msg.id)}
-                className="flex-shrink-0 text-current opacity-60 hover:opacity-100 transition-opacity"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          ))}
-        </div>,
-        document.body
-      )}
-    </SnackbarContext.Provider>
-  );
-}
 /* ─── Helpers ─── */
 function formatTat(sec?: number) {
   if (sec == null || sec < 0) return "—";
@@ -2157,7 +2062,7 @@ function LogTransactionModal({
 }
 
 /* ═══════════════════════════════════════════════════════
-   ─── Main Page
+   ─── Main Page Content
    ═══════════════════════════════════════════════════════ */
 function TxLogPageContent() {
   const { showSnackbar } = useSnackbar();
@@ -2909,7 +2814,7 @@ function TxLogPageContent() {
             <tr className="bg-slate-50 dark:bg-zinc-800/50">
               <th className="px-2.5 py-1 text-left font-semibold text-slate-500 dark:text-zinc-400 border-r border-slate-200 dark:border-zinc-700 whitespace-nowrap">Task Type</th>
               <th className="px-2.5 py-1 text-center font-semibold text-slate-500 dark:text-zinc-400 whitespace-nowrap">Count</th>
-            </tr>
+             </tr>
           </thead>
           <tbody>
             {entries.map(([name, { count, countType }], i) => (
@@ -2919,14 +2824,14 @@ function TxLogPageContent() {
                     {name}
                     <CountTypeBadge countType={countType} />
                   </div>
-                </td>
+                 </td>
                 <td className={`px-2.5 py-1 text-center font-bold whitespace-nowrap ${
                   isProduction ? "text-indigo-500 dark:text-indigo-400" : "text-slate-500 dark:text-zinc-400"
                 }`}>{count}</td>
-              </tr>
+               </tr>
             ))}
           </tbody>
-        </table>
+         </table>
       </div>
     );
   };
@@ -2956,7 +2861,7 @@ function TxLogPageContent() {
                       {["#", "Type of Task", "Category", "Status", "Notes","Actions", ""].map(h => (
                         <th key={h} className="text-left px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500">{h}</th>
                       ))}
-                    </tr>
+                     </tr>
                   </thead>
                   <tbody>
                     {filteredTransactions.map((tx, i) => (
@@ -2979,11 +2884,11 @@ function TxLogPageContent() {
                         <td colSpan={6} className="px-6 py-10 text-center">
                           <p className="text-sm text-slate-400 dark:text-zinc-500">No transactions match your filters.</p>
                           <button onClick={() => { setSearchQuery(""); setFilterStatus("ALL"); setFilterDocType("ALL"); setFilterCategory("ALL"); }} className="mt-2 text-xs text-indigo-400 dark:text-indigo-500 hover:text-indigo-600 transition-colors">Clear filters</button>
-                        </td>
-                      </tr>
+                         </td>
+                       </tr>
                     )}
                   </tbody>
-                </table>
+                 </table>
               </div>
             )}
           </div>
@@ -3216,6 +3121,9 @@ function TxLogPageContent() {
   );
 }
 
+/* ═══════════════════════════════════════════════════════
+   ─── Main Page Export
+   ═══════════════════════════════════════════════════════ */
 export default function TxLogPage() {
   return (
     <SnackbarProvider>
