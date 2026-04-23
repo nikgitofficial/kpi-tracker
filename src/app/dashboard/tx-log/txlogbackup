@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 import {
   Plus, Trash2, Pencil, CheckCircle2,
   Clock, AlertTriangle, Users, Tag, FileText, FileSpreadsheet,
   Pause, ChevronDown, ChevronRight, ListPlus, X, Play, Square,
-  Timer, PauseCircle, Check, Info, AlertCircle,
+  Timer, PauseCircle,
 } from "lucide-react";
 
 /* ─── Types ─── */
@@ -81,102 +81,6 @@ interface EndTimerConfirmation {
   netSeconds: number;
 }
 
-/* ============================================================
-   SNACKBAR CONTEXT & PROVIDER
-   ============================================================ */
-
-type SnackbarType = "success" | "error" | "info" | "warning";
-
-interface SnackbarMessage {
-  id: string;
-  type: SnackbarType;
-  title: string;
-  message?: string;
-  duration?: number;
-}
-
-interface SnackbarContextValue {
-  showSnackbar: (type: SnackbarType, title: string, message?: string, duration?: number) => void;
-  hideSnackbar: (id: string) => void;
-}
-
-const SnackbarContext = createContext<SnackbarContextValue | null>(null);
-
-export function useSnackbar() {
-  const context = useContext(SnackbarContext);
-  if (!context) {
-    throw new Error("useSnackbar must be used within a SnackbarProvider");
-  }
-  return context;
-}
-
-function SnackbarProvider({ children }: { children: React.ReactNode }) {
-  const [messages, setMessages] = useState<SnackbarMessage[]>([]);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const showSnackbar = useCallback((type: SnackbarType, title: string, message?: string, duration = 4000) => {
-    const id = Math.random().toString(36).slice(2, 10);
-    setMessages((prev) => [...prev, { id, type, title, message, duration }]);
-    setTimeout(() => {
-      setMessages((prev) => prev.filter((m) => m.id !== id));
-    }, duration);
-  }, []);
-
-  const hideSnackbar = useCallback((id: string) => {
-    setMessages((prev) => prev.filter((m) => m.id !== id));
-  }, []);
-
-  const getIcon = (type: SnackbarType) => {
-    switch (type) {
-      case "success": return <CheckCircle2 size={16} className="text-emerald-500" />;
-      case "error": return <AlertCircle size={16} className="text-red-500" />;
-      case "warning": return <AlertTriangle size={16} className="text-amber-500" />;
-      case "info": return <Info size={16} className="text-sky-500" />;
-    }
-  };
-
-  const getStyles = (type: SnackbarType) => {
-    switch (type) {
-      case "success": return "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/50 dark:border-emerald-800 dark:text-emerald-200";
-      case "error": return "bg-red-50 border-red-200 text-red-800 dark:bg-red-950/50 dark:border-red-800 dark:text-red-200";
-      case "warning": return "bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950/50 dark:border-amber-800 dark:text-amber-200";
-      case "info": return "bg-sky-50 border-sky-200 text-sky-800 dark:bg-sky-950/50 dark:border-sky-800 dark:text-sky-200";
-    }
-  };
-
-  return (
-    <SnackbarContext.Provider value={{ showSnackbar, hideSnackbar }}>
-      {children}
-      {mounted && typeof window !== "undefined" && createPortal(
-        <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-[100] flex flex-col gap-2 items-center">
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex items-start gap-3 px-4 py-3 rounded-xl border shadow-lg animate-in slide-in-from-bottom-5 duration-300 max-w-sm ${getStyles(msg.type)}`}
-            >
-              {getIcon(msg.type)}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold">{msg.title}</p>
-                {msg.message && <p className="text-xs opacity-80 mt-0.5">{msg.message}</p>}
-              </div>
-              <button
-                onClick={() => hideSnackbar(msg.id)}
-                className="flex-shrink-0 text-current opacity-60 hover:opacity-100 transition-opacity"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          ))}
-        </div>,
-        document.body
-      )}
-    </SnackbarContext.Provider>
-  );
-}
 /* ─── Helpers ─── */
 function formatTat(sec?: number) {
   if (sec == null || sec < 0) return "—";
@@ -447,7 +351,6 @@ function ProductivityTimer({
   onProductivityChange,
   bioBreakSeconds,
 }: ProductivityTimerProps) {
-  const { showSnackbar } = useSnackbar();
   // ── DB record (single source of truth) ──
   const [record, setRecord] = useState<TimerRecord | null>(null);
   const [loading, setLoading] = useState(true);
@@ -535,10 +438,9 @@ function ProductivityTimer({
       })
       .catch((err) => {
         console.error("Failed to load timer:", err);
-        showSnackbar("error", "Failed to load timer", "Please refresh the page");
       })
       .finally(() => setLoading(false));
-  }, [agentId, date, onProductivityChange, showSnackbar]);
+  }, [agentId, date, onProductivityChange]);
 
   // ── Notify parent whenever tick fires or record changes ──
   useEffect(() => {
@@ -622,10 +524,7 @@ function ProductivityTimer({
       timerStartEpoch: epoch,
       timerPaused: false,
     });
-    if (updated) { 
-      setRecord(updated); 
-      showSnackbar("success", "Timer started", "Productivity timer is now running");
-    }
+    if (updated) setRecord(updated);
   };
 
   const handlePause = async () => {
@@ -636,10 +535,7 @@ function ProductivityTimer({
       timerStartEpoch: null,
       timerPaused: true,
     });
-    if (updated) { 
-      setRecord(updated); 
-      showSnackbar("info", "Timer paused", "Click Resume to continue");
-    }
+    if (updated) setRecord(updated);
   };
 
   const handleResume = async () => {
@@ -649,10 +545,7 @@ function ProductivityTimer({
       timerStartEpoch: epoch,
       timerPaused: false,
     });
-    if (updated) { 
-      setRecord(updated); 
-      showSnackbar("success", "Timer resumed", "Productivity tracking continues");
-    }
+    if (updated) setRecord(updated);
   };
 
   const handleEnd = () => {
@@ -669,10 +562,7 @@ function ProductivityTimer({
       timerStartEpoch: null,
       timerPaused: false,
     });
-    if (updated) { 
-      setRecord(updated); 
-      showSnackbar("success", "Timer ended", `Net productive time: ${formatTat(pendingEnd.netSeconds)}`);
-    }
+    if (updated) setRecord(updated);
     setPendingEnd(null);
   };
 
@@ -683,10 +573,7 @@ function ProductivityTimer({
       timerStartEpoch: null,
       timerPaused: false,
     });
-    if (updated) { 
-      setRecord(updated); 
-      showSnackbar("warning", "Timer reset", "Productive time has been reset to 0");
-    }
+    if (updated) setRecord(updated);
   };
 
   const handleContinue = async () => {
@@ -696,10 +583,7 @@ function ProductivityTimer({
       timerStartEpoch: epoch,
       timerPaused: false,
     });
-    if (updated) { 
-      setRecord(updated); 
-      showSnackbar("success", "Timer continued", "Keep tracking your productivity");
-    }
+    if (updated) setRecord(updated);
   };
 
   // ── Password gate ──
@@ -753,11 +637,7 @@ function ProductivityTimer({
       timerPaused: false,
     });
     setEditSaving(false);
-    if (updated) { 
-      setRecord(updated); 
-      setShowEdit(false); 
-      showSnackbar("success", "Time updated", `Productive time set to ${editHMS}`);
-    }
+    if (updated) { setRecord(updated); setShowEdit(false); }
   };
 
   // ── Derived display state ──
@@ -784,7 +664,8 @@ function ProductivityTimer({
           </span>
         )}
         {record && !isRunning && (
-          <button            onClick={openEdit}
+          <button
+            onClick={openEdit}
             title="Edit productive time (requires password)"
             className="ml-auto flex items-center gap-1 text-[10px] text-slate-400 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors"
           >
@@ -1083,6 +964,9 @@ function ProductivityTimer({
 
 /* ═══════════════════════════════════════════════════════
    ─── Subtask Row (table inline edit)
+
+/* ═══════════════════════════════════════════════════════
+   ─── Subtask Row (table inline edit)
    ═══════════════════════════════════════════════════════ */
 interface SubtaskRowProps {
   subtask: Subtask;
@@ -1095,7 +979,6 @@ interface SubtaskRowProps {
 }
 
 function SubtaskRow({ subtask, index, txId, docTypes, parentCategory, onUpdated, onDeleted }: SubtaskRowProps) {
-  const { showSnackbar } = useSnackbar();
   const [editing,   setEditing]   = useState(false);
   const [stDocType, setStDocType] = useState(subtask.docType);
   const [stNumber,  setStNumber]  = useState(String(subtask.number ?? ""));
@@ -1112,30 +995,31 @@ function SubtaskRow({ subtask, index, txId, docTypes, parentCategory, onUpdated,
   };
 
   // Keyboard shortcuts — only when this subtask row is hovered
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!hoveredRef.current) return;
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  // Keyboard shortcuts — only when this subtask row is hovered
+useEffect(() => {
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (!hoveredRef.current) return;
+    const tag = (e.target as HTMLElement).tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
 
-      if (e.key === "1") {
-        e.preventDefault();
-        setEditing(true);
-      } else if (e.key === "2") {
-        e.preventDefault();
-        // Call delete inline instead of referencing handleDelete
-        fetch("/api/kpi/transactions", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: txId, subtaskAction: "DELETE", subtaskId: subtask._id }),
-        }).then(res => {
-          if (res.ok) res.json().then(d => onDeleted(d.transaction));
-        });
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [subtask._id, txId, onDeleted]);
+    if (e.key === "1") {
+      e.preventDefault();
+      setEditing(true);
+    } else if (e.key === "2") {
+      e.preventDefault();
+      // Call delete inline instead of referencing handleDelete
+      fetch("/api/kpi/transactions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: txId, subtaskAction: "DELETE", subtaskId: subtask._id }),
+      }).then(res => {
+        if (res.ok) res.json().then(d => onDeleted(d.transaction));
+      });
+    }
+  };
+  window.addEventListener("keydown", handleKeyDown);
+  return () => window.removeEventListener("keydown", handleKeyDown);
+}, [subtask._id, txId, onDeleted]); // ← correct deps
 
   const handleSave = async () => {
     setSaving(true);
@@ -1145,27 +1029,20 @@ function SubtaskRow({ subtask, index, txId, docTypes, parentCategory, onUpdated,
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        id: txId,
-        subtaskAction: "UPDATE",
-        subtaskId: subtask._id,
-        subtask: {
-          docType:      stDocType,
-          number:       stNumber ? Number(stNumber) : undefined,
-          notes:        stNotes.trim() || undefined,
-          status:       stStatus,
-          taskCategory: subtaskCategory,
-        },
-      }),
+  id: txId,
+  subtaskAction: "UPDATE",
+  subtaskId: subtask._id,
+  subtask: {
+    docType:      stDocType,
+    number:       stNumber ? Number(stNumber) : undefined,
+    notes:        stNotes.trim() || undefined,
+    status:       stStatus,
+    taskCategory: subtaskCategory,
+  },
+}),
     });
     setSaving(false);
-    if (res.ok) { 
-      const d = await res.json(); 
-      onUpdated(d.transaction); 
-      setEditing(false);
-      showSnackbar("success", "Subtask updated", `${stDocType} has been updated`);
-    } else {
-      showSnackbar("error", "Failed to update subtask", "Please try again");
-    }
+    if (res.ok) { const d = await res.json(); onUpdated(d.transaction); setEditing(false); }
   };
 
   const handleDelete = async () => {
@@ -1176,59 +1053,53 @@ function SubtaskRow({ subtask, index, txId, docTypes, parentCategory, onUpdated,
       body: JSON.stringify({ id: txId, subtaskAction: "DELETE", subtaskId: subtask._id }),
     });
     setDeleting(false);
-    if (res.ok) { 
-      const d = await res.json(); 
-      onDeleted(d.transaction);
-      showSnackbar("warning", "Subtask deleted", `${subtask.docType} has been removed`);
-    } else {
-      showSnackbar("error", "Failed to delete subtask", "Please try again");
-    }
+    if (res.ok) { const d = await res.json(); onDeleted(d.transaction); }
   };
 
   if (editing) {
-    return (
-      <tr className="border-b border-indigo-100 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/20">
-        <td className="pl-10 pr-2 py-2 text-slate-400 text-xs">↳</td>
-        <td className="px-2 py-2">
-          <select value={stDocType} onChange={e => setStDocType(e.target.value)} className={selectSmCls}>
-            {docTypes.map(dt => <option key={dt._id} value={dt.name}>{dt.name}</option>)}
-          </select>
-        </td>
-        <td className="px-2 py-2">
-          <CategoryBadge category={docTypes.find(dt => dt.name === stDocType)?.taskCategory ?? subtask.taskCategory} />
-        </td>
-        <td className="px-2 py-2">
-          <select value={stStatus} onChange={e => setStStatus(e.target.value as Subtask["status"])} className={selectSmCls}>
-            <option value="COMPLETION">Completion</option>
-            <option value="PENDING">Pending</option>
-            <option value="ESCALATION">Escalation</option>
-            <option value="HOLD">Hold</option>
-          </select>
-        </td>
-        <td className="px-2 py-2">
-          <div className="flex gap-1.5">
-            <input
-              type="number"
-              min="1"
-              value={stNumber}
-              onChange={e => setStNumber(e.target.value)}
-              placeholder="Vol/Num"
-              className={`${inputSmCls} w-20`}
-            />
-            <input value={stNotes} onChange={e => setStNotes(e.target.value)} placeholder="Notes…" className={inputSmCls} />
-          </div>
-        </td>
-        <td className="px-2 py-2">
-          <div className="flex items-center gap-1.5">
-            <button onClick={handleSave} disabled={saving} className="px-2 py-1 rounded-md bg-indigo-600 text-white text-[10px] font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-              {saving ? "…" : "Save"}
-            </button>
-            <button onClick={() => setEditing(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200"><X size={12} /></button>
-          </div>
-        </td>
-      </tr>
-    );
-  }
+  return (
+    <tr className="border-b border-indigo-100 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/20">
+      <td className="pl-10 pr-2 py-2 text-slate-400 text-xs">↳</td>
+      <td className="px-2 py-2">
+        <select value={stDocType} onChange={e => setStDocType(e.target.value)} className={selectSmCls}>
+          {docTypes.map(dt => <option key={dt._id} value={dt.name}>{dt.name}</option>)}
+        </select>
+      </td>
+      <td className="px-2 py-2">
+        <CategoryBadge category={docTypes.find(dt => dt.name === stDocType)?.taskCategory ?? subtask.taskCategory} />
+      </td>
+      <td className="px-2 py-2">
+        <select value={stStatus} onChange={e => setStStatus(e.target.value as Subtask["status"])} className={selectSmCls}>
+          <option value="COMPLETION">Completion</option>
+          <option value="PENDING">Pending</option>
+          <option value="ESCALATION">Escalation</option>
+          <option value="HOLD">Hold</option>
+        </select>
+      </td>
+      <td className="px-2 py-2">
+        <div className="flex gap-1.5">
+          <input
+            type="number"
+            min="1"
+            value={stNumber}
+            onChange={e => setStNumber(e.target.value)}
+            placeholder="Vol/Num"
+            className={`${inputSmCls} w-20`}
+          />
+          <input value={stNotes} onChange={e => setStNotes(e.target.value)} placeholder="Notes…" className={inputSmCls} />
+        </div>
+      </td>
+      <td className="px-2 py-2">
+        <div className="flex items-center gap-1.5">
+          <button onClick={handleSave} disabled={saving} className="px-2 py-1 rounded-md bg-indigo-600 text-white text-[10px] font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors">
+            {saving ? "…" : "Save"}
+          </button>
+          <button onClick={() => setEditing(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200"><X size={12} /></button>
+        </div>
+      </td>
+    </tr>
+  );
+}
 
   return (
     <>
@@ -1246,16 +1117,16 @@ function SubtaskRow({ subtask, index, txId, docTypes, parentCategory, onUpdated,
         </td>
 
         {/* Type of Task */}
-        <td className="px-4 py-2 text-slate-500 dark:text-zinc-400 text-xs">
-          <div className="flex items-center gap-1.5">
-            <span>{subtask.docType}</span>
-            {subtask.number != null && (
-              <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-[9px] font-bold text-slate-500 dark:text-zinc-400">
-                ×{subtask.number}
-              </span>
-            )}
-          </div>
-        </td>
+<td className="px-4 py-2 text-slate-500 dark:text-zinc-400 text-xs">
+  <div className="flex items-center gap-1.5">
+    <span>{subtask.docType}</span>
+    {subtask.number != null && (
+      <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-[9px] font-bold text-slate-500 dark:text-zinc-400">
+        ×{subtask.number}
+      </span>
+    )}
+  </div>
+</td>
 
         {/* Category */}
         <td className="px-4 py-2">
@@ -1370,12 +1241,11 @@ function SubtaskRow({ subtask, index, txId, docTypes, parentCategory, onUpdated,
 interface AddSubtaskInlineRowProps {
   docTypes: DocType[];
   txId: string;
-  parentCategory: TaskCategory;
+  parentCategory: TaskCategory;  // ADD THIS
   onAdded: (updated: Transaction) => void;
   onCancel: () => void;
 }
 function AddSubtaskInlineRow({ docTypes, txId, parentCategory, onAdded, onCancel }: AddSubtaskInlineRowProps) {
-  const { showSnackbar } = useSnackbar();
   const [stDocType, setStDocType] = useState(docTypes[0]?.name ?? "");
   const [stNumber,  setStNumber]  = useState("");
   const [stStatus,  setStStatus]  = useState<Subtask["status"]>("COMPLETION");
@@ -1384,39 +1254,33 @@ function AddSubtaskInlineRow({ docTypes, txId, parentCategory, onAdded, onCancel
   const [err,       setErr]       = useState("");
 
   const handleSubmit = async () => {
-    setErr("");
-    if (!stDocType) { setErr("Select a task type"); return; }
-    setSaving(true);
+  setErr("");
+  if (!stDocType) { setErr("Select a task type"); return; }
+  setSaving(true);
 
-    // Look up the selected docType's own category
-    const selectedDt = docTypes.find(dt => dt.name === stDocType);
-    const subtaskCategory = selectedDt?.taskCategory ?? parentCategory;
+  // Look up the selected docType's own category
+  const selectedDt = docTypes.find(dt => dt.name === stDocType);
+  const subtaskCategory = selectedDt?.taskCategory ?? parentCategory;
 
-    const res = await fetch("/api/kpi/transactions", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: txId,
-        subtaskAction: "ADD",
-        subtask: {
-          docType:      stDocType,
-          number:       stNumber ? Number(stNumber) : undefined,
-          notes:        stNotes.trim() || undefined,
-          status:       stStatus,
-          taskCategory: subtaskCategory,
-        },
-      }),
-    });
-    setSaving(false);
-    if (res.ok) { 
-      const d = await res.json(); 
-      onAdded(d.transaction);
-      showSnackbar("success", "Subtask added", `${stDocType} has been added`);
-    } else {
-      setErr("Failed to add");
-      showSnackbar("error", "Failed to add subtask", "Please try again");
-    }
-  };
+  const res = await fetch("/api/kpi/transactions", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      id: txId,
+      subtaskAction: "ADD",
+      subtask: {
+        docType:      stDocType,
+        number:       stNumber ? Number(stNumber) : undefined,
+        notes:        stNotes.trim() || undefined,
+        status:       stStatus,
+        taskCategory: subtaskCategory,  // ← uses the subtask docType's own category
+      },
+    }),
+  });
+  setSaving(false);
+  if (res.ok) { const d = await res.json(); onAdded(d.transaction); }
+  else setErr("Failed to add");
+};
 
   return (
     <div className="flex flex-wrap items-end gap-2 p-2.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-zinc-900">
@@ -1481,7 +1345,7 @@ function TxTableRow({ tx, index, docTypeCount, subtaskDocTypeTotals, docTypes, o
   const [showSubtaskForm, setShowSubtaskForm] = useState(false);
   const [hovered,         setHovered]         = useState(false);
   const [tooltipPos,      setTooltipPos]      = useState({ x: 0, y: 0 });
-  const hoveredRef = useRef(false);
+  const hoveredRef = useRef(false); // ref to track hover in keyboard handler
   const subtasks = tx.subtasks ?? [];
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -1492,6 +1356,7 @@ function TxTableRow({ tx, index, docTypeCount, subtaskDocTypeTotals, docTypes, o
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!hoveredRef.current) return;
+      // Don't fire if user is typing in an input/textarea/select
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
 
@@ -1713,12 +1578,10 @@ function TxTableRow({ tx, index, docTypeCount, subtaskDocTypeTotals, docTypes, o
     </>
   );
 }
-
 /* ═══════════════════════════════════════════════════════
    ─── Bio Break Panel
    ═══════════════════════════════════════════════════════ */
 function BioBreakPanel({ selectedAgent, date, onBioBreakChange }: { selectedAgent: Agent; date: string; onBioBreakChange: (seconds: number) => void }) {
-  const { showSnackbar } = useSnackbar();
   useTick(1000);
 
   const [agentSession, setAgentSession]       = useState<AgentSessionData | null>(null);
@@ -1747,7 +1610,6 @@ function BioBreakPanel({ selectedAgent, date, onBioBreakChange }: { selectedAgen
     const d = await res.json();
     setAgentSession(d.session);
     setSessionStarting(false);
-    showSnackbar("success", "Session started", "Your work session has begun");
   };
 
   const handleStartBio = async () => {
@@ -1770,7 +1632,6 @@ function BioBreakPanel({ selectedAgent, date, onBioBreakChange }: { selectedAgen
     const ongoing = (d.session?.breaks ?? []).find((b: BreakEntry) => !b.endEpoch);
     setActiveBreak(ongoing ?? null);
     setSubmitting(false);
-    showSnackbar("info", "Bio break started", "Take a short break. Timer will pause.");
   };
 
   const handleEndBio = async () => {
@@ -1785,7 +1646,6 @@ function BioBreakPanel({ selectedAgent, date, onBioBreakChange }: { selectedAgen
     setAgentSession(d.session);
     setActiveBreak(null);
     setSubmitting(false);
-    showSnackbar("success", "Bio break ended", "Welcome back! Continue working.");
   };
 
   const liveBreakSeconds     = activeBreak ? Math.floor((Date.now() - activeBreak.startEpoch) / 1000) : 0;
@@ -2159,8 +2019,7 @@ function LogTransactionModal({
 /* ═══════════════════════════════════════════════════════
    ─── Main Page
    ═══════════════════════════════════════════════════════ */
-function TxLogPageContent() {
-  const { showSnackbar } = useSnackbar();
+export default function TxLogPage() {
   const [agents, setAgents]               = useState<Agent[]>([]);
   const [docTypes, setDocTypes]           = useState<DocType[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
@@ -2318,27 +2177,12 @@ function TxLogPageContent() {
   const handleExcelExport = async () => {
     if (!selectedAgent || transactions.length === 0) return;
     setExporting("excel");
-    try { 
-      await exportToExcel(transactions, selectedAgent.name, date, stats); 
-      showSnackbar("success", "Export complete", `tx-log_${selectedAgent.name}_${date}.xlsx has been saved`);
-    } catch (error) {
-      showSnackbar("error", "Export failed", "Could not generate Excel file");
-    } finally { 
-      setExporting(null); 
-    }
+    try { await exportToExcel(transactions, selectedAgent.name, date, stats); } finally { setExporting(null); }
   };
-  
   const handlePdfExport = async () => {
     if (!selectedAgent || transactions.length === 0) return;
     setExporting("pdf");
-    try { 
-      await exportToPdf(transactions, selectedAgent.name, date, formattedDate, stats);
-      showSnackbar("success", "Export complete", `tx-log_${selectedAgent.name}_${date}.pdf has been saved`);
-    } catch (error) {
-      showSnackbar("error", "Export failed", "Could not generate PDF file");
-    } finally { 
-      setExporting(null); 
-    }
+    try { await exportToPdf(transactions, selectedAgent.name, date, formattedDate, stats); } finally { setExporting(null); }
   };
 
   /* ── Reset form helper ── */
@@ -2382,65 +2226,60 @@ function TxLogPageContent() {
       setSubmitting(false);
       if (res.ok) {
         await fetchTx();
-        const successMsg = finalStatus === "HOLD" ? "Transaction placed on hold" : "Transaction updated";
-        showSnackbar("success", successMsg, `"${companyName}" has been ${finalStatus === "HOLD" ? "held" : "updated"}`);
-        setShowLogModal(false);
-        resetForm();
+        setSaveSuccess(finalStatus === "HOLD" ? "Transaction placed on hold" : "Transaction updated");
+        setTimeout(() => { setSaveSuccess(""); setShowLogModal(false); resetForm(); }, 1500);
       } else {
         const errData = await res.json();
         setFormError(errData.error ?? "Failed to update transaction");
-        showSnackbar("error", "Failed to update", errData.error ?? "Please try again");
       }
       return;
     }
 
-    const subtasksPayload = formSubtasks
-      .filter(st => st.docType)
-      .map(st => {
-        const foundDocType = docTypes.find(dt => dt.name === st.docType);
-        return {
-          docType: st.docType,
-          number:  st.number ? Number(st.number) : undefined,
-          status:  st.status,
-          notes:   st.notes.trim() || undefined,
-          taskCategory: foundDocType?.taskCategory ?? "Production",
-          countType: foundDocType?.countType ?? "transaction",
-        };
-      });
+   const subtasksPayload = formSubtasks
+  .filter(st => st.docType)
+  .map(st => {
+    const foundDocType = docTypes.find(dt => dt.name === st.docType);
+    return {
+      docType: st.docType,
+      number:  st.number ? Number(st.number) : undefined,
+      status:  st.status,
+      notes:   st.notes.trim() || undefined,
+      taskCategory: foundDocType?.taskCategory ?? "Production",
+      countType: foundDocType?.countType ?? "transaction",
+    };
+  });
 
-    const selectedDocType = docTypes.find(dt => dt.name === docType);
-    const countType = selectedDocType?.countType ?? "transaction";
+    // Find the countType for this docType
+const selectedDocType = docTypes.find(dt => dt.name === docType);
+const countType = selectedDocType?.countType ?? "transaction";
 
-    const res = await fetch("/api/kpi/transactions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        agentId:        selectedAgent._id,
-        agentName:      selectedAgent.name,
-        docType,
-        companyName:    companyName.trim(),
-        volume:         Number(volume),
-        date,
-        status:         finalStatus,
-        notes:          notes.trim() || undefined,
-        startEpoch:     Date.now(),
-        elapsedSeconds: 0,
-        taskCategory,
-        countType,
-        subtasks:       subtasksPayload,
-      }),
-    });
+const res = await fetch("/api/kpi/transactions", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    agentId:        selectedAgent._id,
+    agentName:      selectedAgent.name,
+    docType,
+    companyName:    companyName.trim(),
+    volume:         Number(volume),
+    date,
+    status:         finalStatus,
+    notes:          notes.trim() || undefined,
+    startEpoch:     Date.now(),
+    elapsedSeconds: 0,
+    taskCategory,
+    countType,
+    subtasks:       subtasksPayload,
+  }),
+});
     setSubmitting(false);
     if (res.ok) {
       await fetchTx();
-      const successMsg = finalStatus === "HOLD" ? "Transaction placed on hold" : "Transaction saved";
-      showSnackbar("success", successMsg, `"${companyName}" has been added to your log`);
-      setShowLogModal(false);
-      resetForm();
+      setSaveSuccess(finalStatus === "HOLD" ? "Transaction placed on hold" : "Transaction saved");
+      setTimeout(() => { setSaveSuccess(""); setShowLogModal(false); resetForm(); }, 1500);
     } else {
       const errData = await res.json();
       setFormError(errData.error ?? "Failed to save transaction");
-      showSnackbar("error", "Failed to save", errData.error ?? "Please check your inputs and try again");
     }
   };
 
@@ -2473,9 +2312,6 @@ function TxLogPageContent() {
         }))
       );
       setShowLogModal(true);
-      showSnackbar("info", "Transaction resumed", "You can now continue editing this transaction");
-    } else {
-      showSnackbar("error", "Failed to resume", "Could not resume the held transaction");
     }
   };
 
@@ -2484,61 +2320,32 @@ function TxLogPageContent() {
     setEditingTx(tx); setEditDocType(tx.docType); setEditCompanyName(tx.companyName);
     setEditVolume(String(tx.volume)); setEditStatus(tx.status); setEditNotes(tx.notes ?? ""); setEditTaskCategory(tx.taskCategory ?? "Production");
   };
-  
   const handleEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingTx) return;
     setEditSubmitting(true);
-    const res = await fetch("/api/kpi/transactions", {
+    await fetch("/api/kpi/transactions", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: editingTx._id, docType: editDocType, companyName: editCompanyName.trim(), volume: Number(editVolume), status: editStatus, notes: editNotes.trim() || undefined, taskCategory: editTaskCategory }),
     });
-    setEditSubmitting(false);
-    if (res.ok) {
-      setEditingTx(null);
-      fetchTx();
-      showSnackbar("success", "Transaction updated", `Changes to "${editCompanyName}" have been saved`);
-    } else {
-      showSnackbar("error", "Failed to update", "Could not save changes");
-    }
+    setEditSubmitting(false); setEditingTx(null); fetchTx();
   };
-  
   const deleteTx = async () => {
     if (!deletingId) return;
-    const res = await fetch("/api/kpi/transactions", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: deletingId }) });
-    if (res.ok) {
-      setDeletingId(null);
-      fetchTx();
-      showSnackbar("warning", "Transaction deleted", "The transaction has been permanently removed");
-    } else {
-      showSnackbar("error", "Failed to delete", "Could not remove the transaction");
-    }
+    await fetch("/api/kpi/transactions", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: deletingId }) });
+    setDeletingId(null); fetchTx();
   };
 
   /* ── Settings helpers ── */
   const addAgent = async () => {
     if (!newAgent.trim()) return;
     const res = await fetch("/api/kpi/agents", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: newAgent.trim(), group: newAgentGroup.trim() || undefined }) });
-    if (res.ok) { 
-      const d = await res.json(); 
-      setAgents(prev => [...prev, d.agent]); 
-      setNewAgent(""); 
-      setNewAgentGroup("");
-      showSnackbar("success", "Agent added", `${newAgent.trim()} has been added to the team`);
-    } else {
-      showSnackbar("error", "Failed to add agent", "Please try again");
-    }
+    if (res.ok) { const d = await res.json(); setAgents(prev => [...prev, d.agent]); setNewAgent(""); setNewAgentGroup(""); }
   };
-  
   const updateAgentGroup = async (id: string, group: string) => {
     const res = await fetch("/api/kpi/agents", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, group: group || undefined }) });
-    if (res.ok) { 
-      const d = await res.json(); 
-      setAgents(prev => prev.map(a => a._id === id ? { ...a, group: d.agent.group } : a));
-      showSnackbar("info", "Group updated", `Agent group changed to "${group || "none"}"`);
-    }
+    if (res.ok) { const d = await res.json(); setAgents(prev => prev.map(a => a._id === id ? { ...a, group: d.agent.group } : a)); }
   };
-  
   const addDocType = async () => {
     if (!newDocType.trim()) return;
     const res = await fetch("/api/kpi/doc-types", {
@@ -2557,48 +2364,36 @@ function TxLogPageContent() {
       setNewDocType("");
       setNewDocTypeCategory("Production");
       setNewDocTypeCountType("transaction");
-      showSnackbar("success", "Task type added", `${newDocType.trim()} is now available`);
-    } else {
-      showSnackbar("error", "Failed to add task type", "Please try again");
     }
   };
-  
   const deleteAgent = async (id: string) => {
-    const agentToDelete = agents.find(a => a._id === id);
     await fetch("/api/kpi/agents", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
     setAgents(prev => prev.filter(a => a._id !== id));
     if (selectedAgent?._id === id) setSelectedAgent(agents.find(a => a._id !== id) ?? null);
-    showSnackbar("warning", "Agent removed", `${agentToDelete?.name} has been removed from the system`);
   };
-  
   const deleteDocType = async (id: string) => {
-    const dtToDelete = docTypes.find(dt => dt._id === id);
     await fetch("/api/kpi/doc-types", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
     setDocTypes(prev => prev.filter(d => d._id !== id));
-    showSnackbar("warning", "Task type removed", `${dtToDelete?.name} has been deleted`);
   };
 
   const updateDocType = async (id: string) => {
-    if (!editDocTypeName.trim()) return;
-    const res = await fetch("/api/kpi/doc-types", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id,
-        name: editDocTypeName.trim(),
-        taskCategory: editDocTypeCategory,
-        countType: editDocTypeCountType,
-      }),
-    });
-    if (res.ok) {
-      const d = await res.json();
-      setDocTypes(prev => prev.map(dt => dt._id === id ? d.docType : dt));
-      setEditingDocTypeId(null);
-      showSnackbar("success", "Task type updated", `Updated to "${editDocTypeName.trim()}"`);
-    } else {
-      showSnackbar("error", "Failed to update", "Could not save changes");
-    }
-  };
+  if (!editDocTypeName.trim()) return;
+  const res = await fetch("/api/kpi/doc-types", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      id,
+      name: editDocTypeName.trim(),
+      taskCategory: editDocTypeCategory,
+      countType: editDocTypeCountType,
+    }),
+  });
+  if (res.ok) {
+    const d = await res.json();
+    setDocTypes(prev => prev.map(dt => dt._id === id ? d.docType : dt));
+    setEditingDocTypeId(null);
+  }
+};
 
   const canExport = !!selectedAgent && transactions.length > 0;
 
@@ -2746,7 +2541,6 @@ function TxLogPageContent() {
         )}
 
         <div className="flex flex-1 min-h-0 overflow-hidden">
-          
 
           {/* ── Left panel: Bio Break + Productivity Timer only ── */}
           {selectedAgent && (
@@ -2961,17 +2755,17 @@ function TxLogPageContent() {
                   <tbody>
                     {filteredTransactions.map((tx, i) => (
                       <TxTableRow
-                        key={tx._id}
-                        tx={tx}
-                        index={i}
-                        docTypeCount={docTypeCountMap[tx.docType] ?? 1}
-                        subtaskDocTypeTotals={subtaskDocTypeTotals}
-                        docTypes={docTypes}
-                        onEdit={openEdit}
-                        onDelete={setDeletingId}
-                        onTxUpdated={handleTxUpdated}
-                        onResume={handleResume}
-                      />
+  key={tx._id}
+  tx={tx}
+  index={i}
+  docTypeCount={docTypeCountMap[tx.docType] ?? 1}
+  subtaskDocTypeTotals={subtaskDocTypeTotals}
+  docTypes={docTypes}
+  onEdit={openEdit}
+  onDelete={setDeletingId}
+  onTxUpdated={handleTxUpdated}
+  onResume={handleResume}
+/>
                     ))}
 
                     {filteredTransactions.length === 0 && transactions.length > 0 && (
@@ -3213,13 +3007,5 @@ function TxLogPageContent() {
 
       </>} {/* closes !bootstrapLoading fragment */}
     </div>
-  );
-}
-
-export default function TxLogPage() {
-  return (
-    <SnackbarProvider>
-      <TxLogPageContent />
-    </SnackbarProvider>
   );
 }

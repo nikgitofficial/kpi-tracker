@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { PageSkeleton } from "@/components/ui/Skeleton";
 import {
   BarChart2, CheckCircle2, AlertTriangle, Users, TrendingUp,
   TrendingDown, Award, Zap, Target, Clock, ChevronUp, ChevronDown,
@@ -618,7 +619,7 @@ export default function KpiAnalyticsPage() {
           </div>
         </div>
 
-        {loading && <div className="text-center py-8 text-slate-400 dark:text-zinc-500 text-sm">Loading analytics…</div>}
+          {loading && <PageSkeleton />}
 
         {/* ── Streak Alert Panel ── */}
         {!loading && agentStats.length > 0 && (

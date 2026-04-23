@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { PageSkeleton } from "@/components/ui/Skeleton";
 import {
   Activity, TrendingUp, CheckCircle2, Clock, AlertTriangle,
   Users, Award, Zap, Shield, Mail, CalendarDays,
@@ -397,11 +398,7 @@ export default function DashboardPage() {
           <ThemeToggle />
         </div>
 
-        {loading && (
-          <div className="flex items-center justify-center py-20">
-            <div className="animate-spin rounded-full h-8 w-8 border-2 border-indigo-500 border-t-transparent" />
-          </div>
-        )}
+        {loading && <PageSkeleton />}
 
         {!loading && summary && (
           <>

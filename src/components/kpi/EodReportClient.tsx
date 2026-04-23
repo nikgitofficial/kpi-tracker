@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { PageSkeleton } from "@/components/ui/Skeleton";
 import {
   ChevronDown, ChevronRight, FileText, FileSpreadsheet,
   Layers, Ungroup, Clock, CheckCircle2, AlertTriangle,
@@ -917,9 +918,7 @@ export function EodReportClient() {
           ))}
         </div>
 
-        {loading && (
-          <div className="text-center py-12 text-slate-400 dark:text-zinc-500 text-sm">Loading…</div>
-        )}
+      {loading && <PageSkeleton />}
 
         {!loading && groups.length === 0 && (
           <div className="text-center py-16 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { PageSkeleton } from "@/components/ui/Skeleton";
 import {
   Activity, TrendingUp, CheckCircle2, Clock,
   AlertTriangle, Users, FileText, ChevronDown, PauseCircle, Timer,
@@ -756,8 +757,8 @@ export default function ActivityPage() {
 
             {/* Agent cards grid */}
             {statusLoading && agents.length === 0 ? (
-              <div className="text-center py-16 text-slate-400 dark:text-zinc-500 text-sm">Loading agent status…</div>
-            ) : agents.length === 0 ? (
+  <PageSkeleton />
+) : agents.length === 0 ? (
               <div className="text-center py-16 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl">
                 <Users size={28} className="text-slate-300 dark:text-zinc-600 mx-auto mb-3" />
                 <p className="text-slate-500 dark:text-zinc-400 text-sm">No agents found.</p>
@@ -904,8 +905,8 @@ export default function ActivityPage() {
 
             {/* Timeline */}
             {loading ? (
-              <div className="text-center py-16 text-slate-400 dark:text-zinc-500 text-sm">Loading activity…</div>
-            ) : filtered.length === 0 ? (
+  <PageSkeleton />
+) : filtered.length === 0 ? (
               <div className="text-center py-16 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl">
                 <Activity size={28} className="text-slate-300 dark:text-zinc-600 mx-auto mb-3" />
                 <p className="text-slate-500 dark:text-zinc-400 text-sm">No transactions found for this period.</p>
