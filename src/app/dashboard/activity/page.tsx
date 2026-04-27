@@ -326,6 +326,9 @@ function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
   const handleResumeTimer = () =>
     callApi("resume-timer", "/api/kpi/timer/resume", { agentId: agent._id, date: today() });
 
+  // Derived paused state (not on break, timer explicitly paused)
+  const isPaused = timerExists && timerPaused && !isOnBreak;
+
   return (
     <>
       {confirm && (
@@ -336,9 +339,12 @@ function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
         />
       )}
 
+      {/* ── Card border reflects state: paused = violet, break = amber, active = emerald ── */}
       <div className={`bg-white dark:bg-zinc-900 border rounded-2xl overflow-hidden transition-all ${
         isOnBreak
           ? "border-amber-200 dark:border-amber-800"
+          : isPaused
+          ? "border-violet-200 dark:border-violet-800"
           : isActive
           ? "border-emerald-200 dark:border-emerald-800"
           : sessionEnded
@@ -346,9 +352,10 @@ function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
           : "border-slate-200 dark:border-zinc-700"
       }`}>
 
-        {/* Top bar accent */}
+        {/* ── Top accent bar ── */}
         <div className={`h-1 w-full ${
           isOnBreak    ? "bg-amber-400" :
+          isPaused     ? "bg-violet-500" :
           isActive     ? "bg-emerald-500" :
           sessionEnded ? "bg-slate-300 dark:bg-zinc-600" :
                          "bg-slate-200 dark:bg-zinc-700"
@@ -369,6 +376,12 @@ function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
                 Break
               </span>
+            ) : isPaused ? (
+              // ── Paused badge ──
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-50 dark:bg-violet-950/50 border border-violet-200 dark:border-violet-800 text-violet-600 dark:text-violet-400 text-[10px] font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />
+                Paused
+              </span>
             ) : isActive ? (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -386,11 +399,11 @@ function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
         {/* TX stats */}
         <div className="grid grid-cols-5 divide-x divide-slate-100 dark:divide-zinc-800 border-b border-slate-100 dark:border-zinc-800">
           {[
-            { label: "TX",   value: totalTx, color: "text-slate-700 dark:text-zinc-200"         },
-            { label: "Done", value: done,    color: "text-emerald-600 dark:text-emerald-400"     },
-            { label: "Pending", value: pending, color: "text-amber-600 dark:text-amber-400"     },
-            { label: "Hold", value: hold,    color: "text-blue-500 dark:text-blue-400"           },
-            { label: "Esc",  value: esc,     color: "text-purple-600 dark:text-purple-400"       },
+            { label: "TX",      value: totalTx,  color: "text-slate-700 dark:text-zinc-200"     },
+            { label: "Done",    value: done,     color: "text-emerald-600 dark:text-emerald-400" },
+            { label: "Pending", value: pending,  color: "text-amber-600 dark:text-amber-400"     },
+            { label: "Hold",    value: hold,     color: "text-blue-500 dark:text-blue-400"       },
+            { label: "Esc",     value: esc,      color: "text-purple-600 dark:text-purple-400"   },
           ].map(s => (
             <div key={s.label} className="py-2.5 text-center">
               <p className={`text-base font-bold leading-none ${s.color}`}>{s.value}</p>
@@ -406,7 +419,7 @@ function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
               <Zap size={9} className="text-emerald-500" />
               Productive
               {timerExists && timerPaused && (
-                <span className="ml-1 px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 text-[9px] font-bold">
+                <span className="ml-1 px-1 py-0.5 rounded bg-violet-100 dark:bg-violet-950/50 text-violet-600 dark:text-violet-400 text-[9px] font-bold">
                   PAUSED
                 </span>
               )}
@@ -418,7 +431,7 @@ function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
           <div className="h-1.5 rounded-full bg-slate-100 dark:bg-zinc-800 overflow-hidden">
             <div
               className={`h-full rounded-full transition-all duration-1000 ${
-                timerPaused  ? "bg-amber-400" :
+                isPaused     ? "bg-violet-500" :
                 isOnBreak    ? "bg-amber-400" :
                 isActive     ? "bg-emerald-500" :
                                "bg-slate-300 dark:bg-zinc-600"
@@ -680,9 +693,9 @@ export default function ActivityPage() {
     // isActive: session exists and open, OR timer is currently running (timerStartEpoch set and not paused)
     const timerRaw  = agentTimerMap[agent._id];
     const timerIsRunning = !!(timerRaw && timerRaw.timerStartEpoch && !timerRaw.timerPaused);
-    const isActive  = !!(
-      (session && !session.sessionEndEpoch && !isOnBreak) || timerIsRunning
-    );
+    const isActive = !!(
+  (session && !session.sessionEndEpoch && !isOnBreak && timerIsRunning) || timerIsRunning
+);
 
     const { productiveSeconds, timerPaused, timerExists } =
       extractTimerState(timerRaw);
@@ -702,6 +715,7 @@ export default function ActivityPage() {
   /* ── Team summary counts ── */
   const activeCount     = agentStatuses.filter(s => s.isActive).length;
   const breakCount      = agentStatuses.filter(s => s.isOnBreak).length;
+  const pausedCount     = agentStatuses.filter(s => s.timerExists && s.timerPaused && !s.isOnBreak).length;
   const clockedOutCount = agentStatuses.filter(s => s.session && !!s.session.sessionEndEpoch).length;
   // Sum of live productive seconds across all currently active agents (updates every 1s via useTick)
   const totalActiveProductiveSec = agentStatuses
@@ -795,13 +809,55 @@ export default function ActivityPage() {
         ══════════════════════════════════════ */}
         {view === "status" && (
           <>
-            {/* Team summary bar */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+            {/* ── Team summary bar — 5 cards, always in one row on md+ ── */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
               {[
-                { label: "Working",     value: activeCount,     icon: Play,     color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800", dot: "bg-emerald-500", ping: activeCount > 0, sub: formatHms(totalActiveProductiveSec) },
-                { label: "On break",    value: breakCount,      icon: Coffee,   color: "text-amber-600 dark:text-amber-400",     bg: "bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800",         dot: "bg-amber-500",  ping: breakCount > 0  },
-                { label: "Clocked out", value: clockedOutCount, icon: LogOut,   color: "text-rose-500 dark:text-rose-400",       bg: "bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800",              dot: "bg-rose-400",   ping: false           },
-                { label: "TX today",    value: totalTodayTx,    icon: Activity, color: "text-indigo-600 dark:text-indigo-400",   bg: "bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800",      dot: "bg-indigo-500", ping: false           },
+                {
+                  label: "Working",
+                  value: activeCount,
+                  icon: Play,
+                  color: "text-emerald-600 dark:text-emerald-400",
+                  bg: "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800",
+                  dot: "bg-emerald-500",
+                  ping: activeCount > 0,
+                  sub: formatHms(totalActiveProductiveSec),
+                },
+                {
+                  label: "Bio-Break",
+                  value: breakCount,
+                  icon: Coffee,
+                  color: "text-amber-600 dark:text-amber-400",
+                  bg: "bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800",
+                  dot: "bg-amber-500",
+                  ping: breakCount > 0,
+                },
+                {
+                  label: "Paused/Lunchbreak",
+                  value: pausedCount,
+                  icon: Pause,
+                  color: "text-violet-600 dark:text-violet-400",
+                  bg: "bg-violet-50 dark:bg-violet-950/40 border-violet-200 dark:border-violet-800",
+                  dot: "bg-violet-500",
+                  ping: pausedCount > 0,
+                },
+                {
+                  label: "Clocked out",
+                  value: clockedOutCount,
+                  icon: LogOut,
+                  color: "text-rose-500 dark:text-rose-400",
+                  bg: "bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800",
+                  dot: "bg-rose-400",
+                  ping: false,
+                },
+                {
+                  label: "TX today",
+                  value: totalTodayTx,
+                  icon: Activity,
+                  color: "text-indigo-600 dark:text-indigo-400",
+                  bg: "bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800",
+                  dot: "bg-indigo-500",
+                  ping: false,
+                },
               ].map(s => {
                 const Icon = s.icon;
                 return (
@@ -813,7 +869,7 @@ export default function ActivityPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline gap-2">
                         <p className={`text-2xl font-bold leading-none ${s.color}`}>{s.value}</p>
-                        {s.sub && (
+                        {"sub" in s && s.sub && (
                           <p className={`text-xs font-mono font-semibold leading-none ${s.color} opacity-80`}>{s.sub}</p>
                         )}
                       </div>
@@ -824,24 +880,29 @@ export default function ActivityPage() {
               })}
             </div>
 
-            {/* Legend */}
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-4 px-1">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Legend</span>
-              {[
-                { dot: "bg-emerald-500", bar: "bg-emerald-500",                      label: "Working — session open, timer running"  },
-                { dot: "bg-amber-400",   bar: "bg-amber-400",                        label: "On break or timer paused"               },
-                { dot: "bg-slate-400",   bar: "bg-slate-300 dark:bg-zinc-600",       label: "No session or clocked out"              },
-              ].map(l => (
-                <div key={l.label} className="flex items-center gap-2">
-                  <div className="flex items-center gap-1.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg px-2 py-1">
-                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${l.dot}`} />
-                    <div className="w-10 h-1.5 rounded-full bg-slate-100 dark:bg-zinc-800 overflow-hidden">
-                      <div className={`h-full w-3/5 rounded-full ${l.bar}`} />
+            {/* ── Legend — 4-column grid, always aligned ── */}
+            <div className="mb-4 px-1">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 block mb-2">
+                Legend
+              </span>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-3 items-start">
+                {[
+                  { dot: "bg-emerald-500", bar: "bg-emerald-500",                  label: "Working — session open, timer running" },
+                  { dot: "bg-amber-400",   bar: "bg-amber-400",                    label: "Bio-Break"                             },
+                  { dot: "bg-violet-500",  bar: "bg-violet-500",                   label: "Timer paused (Lunch Break)"            },
+                  { dot: "bg-slate-400",   bar: "bg-slate-300 dark:bg-zinc-600",   label: "No timer running or session"             },
+                ].map(l => (
+                  <div key={l.label} className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg px-2 py-1 flex-shrink-0">
+                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${l.dot}`} />
+                      <div className="w-10 h-1.5 rounded-full bg-slate-100 dark:bg-zinc-800 overflow-hidden">
+                        <div className={`h-full w-3/5 rounded-full ${l.bar}`} />
+                      </div>
                     </div>
+                    <span className="text-[10px] text-slate-500 dark:text-zinc-400 leading-tight">{l.label}</span>
                   </div>
-                  <span className="text-[10px] text-slate-500 dark:text-zinc-400">{l.label}</span>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
 
             {/* Agent cards grid */}
@@ -934,12 +995,12 @@ export default function ActivityPage() {
             {/* Stats row */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
               {[
-                { label: "Total TX",        value: transactions.length,      icon: Activity,      color: "text-slate-700 dark:text-zinc-200"    },
-                { label: "Completion rate", value: `${completionRate}%`,     icon: CheckCircle2,  color: "text-green-600 dark:text-green-400"   },
-                { label: "Hold",            value: holds,                    icon: PauseCircle,   color: "text-blue-500 dark:text-blue-400"     },
-                { label: "Escalations",     value: escalations,              icon: AlertTriangle, color: "text-purple-600 dark:text-purple-400" },
-                { label: "Total TAT",       value: formatHms(totalTat),      icon: Clock,         color: "text-indigo-600 dark:text-indigo-400" },
-                { label: "Productive time", value: formatHms(totalProductiveSec), icon: Timer,   color: "text-cyan-600 dark:text-cyan-400"     },
+                { label: "Total TX",        value: transactions.length,           icon: Activity,      color: "text-slate-700 dark:text-zinc-200"    },
+                { label: "Completion rate", value: `${completionRate}%`,          icon: CheckCircle2,  color: "text-green-600 dark:text-green-400"   },
+                { label: "Hold",            value: holds,                         icon: PauseCircle,   color: "text-blue-500 dark:text-blue-400"     },
+                { label: "Escalations",     value: escalations,                   icon: AlertTriangle, color: "text-purple-600 dark:text-purple-400" },
+                { label: "Total TAT",       value: formatHms(totalTat),           icon: Clock,         color: "text-indigo-600 dark:text-indigo-400" },
+                { label: "Productive time", value: formatHms(totalProductiveSec), icon: Timer,         color: "text-cyan-600 dark:text-cyan-400"     },
               ].map(s => {
                 const Icon = s.icon;
                 return (
