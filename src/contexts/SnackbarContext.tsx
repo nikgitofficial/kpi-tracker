@@ -72,11 +72,12 @@ export function SnackbarProvider({ children }: { children: React.ReactNode }) {
     <SnackbarContext.Provider value={{ showSnackbar, hideSnackbar }}>
       {children}
       {mounted && typeof window !== "undefined" && createPortal(
-        <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-[100] flex flex-col gap-2 items-center">
+        <div style={{ position: "fixed", bottom: "1rem", left: "50%", transform: "translateX(-50%)", zIndex: 99999, display: "flex", flexDirection: "column", gap: "8px", alignItems: "center", pointerEvents: "none" }}>
           {messages.map((msg) => (
             <div
               key={msg.id}
-              className={`flex items-start gap-3 px-4 py-3 rounded-xl border shadow-lg animate-in slide-in-from-bottom-5 duration-300 max-w-sm ${getStyles(msg.type)}`}
+             style={{ pointerEvents: "auto" }}
+className={`flex items-start gap-3 px-4 py-3 rounded-xl border shadow-lg animate-in slide-in-from-bottom-5 duration-300 max-w-sm w-80 ${getStyles(msg.type)}`}
             >
               {getIcon(msg.type)}
               <div className="flex-1 min-w-0">
