@@ -21,6 +21,7 @@ import {
   FileText,
   BarChart2,
   TrendingUp,
+  Server, 
 } from "lucide-react";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 
@@ -53,6 +54,7 @@ const NAV_GROUPS = [
     items: [
       { icon: Shield, label: "Security", href: "/dashboard/security" },
       { icon: Key,    label: "API Keys", href: "/dashboard/api-keys" },
+      { icon: Server,  label: "System Logs", href: "/dashboard/system-logs" },
     ],
   },
 ];
