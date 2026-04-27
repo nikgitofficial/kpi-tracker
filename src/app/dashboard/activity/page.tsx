@@ -276,6 +276,7 @@ function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
   // Exclude __PROD_TIMER__ pseudo-records from TX counts
   const realTx  = transactions.filter(t => t.docType !== "__PROD_TIMER__");
   const done    = realTx.filter(t => t.status === "COMPLETION").length;
+  const pending = realTx.filter(t => t.status === "PENDING").length;
   const hold    = realTx.filter(t => t.status === "HOLD").length;
   const esc     = realTx.filter(t => t.status === "ESCALATION").length;
   const totalTx = realTx.length;
@@ -383,10 +384,11 @@ function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
         </div>
 
         {/* TX stats */}
-        <div className="grid grid-cols-4 divide-x divide-slate-100 dark:divide-zinc-800 border-b border-slate-100 dark:border-zinc-800">
+        <div className="grid grid-cols-5 divide-x divide-slate-100 dark:divide-zinc-800 border-b border-slate-100 dark:border-zinc-800">
           {[
             { label: "TX",   value: totalTx, color: "text-slate-700 dark:text-zinc-200"         },
             { label: "Done", value: done,    color: "text-emerald-600 dark:text-emerald-400"     },
+            { label: "Pending", value: pending, color: "text-amber-600 dark:text-amber-400"     },
             { label: "Hold", value: hold,    color: "text-blue-500 dark:text-blue-400"           },
             { label: "Esc",  value: esc,     color: "text-purple-600 dark:text-purple-400"       },
           ].map(s => (
