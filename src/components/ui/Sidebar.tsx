@@ -22,6 +22,7 @@ import {
   BarChart2,
   TrendingUp,
   Server, 
+  UserCog,
 } from "lucide-react";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 
@@ -40,6 +41,7 @@ const NAV_GROUPS = [
       { icon: TrendingUp,    label: "Productivity", href: "/dashboard/productivity" },
       { icon: FileText,      label: "EOD Report",   href: "/dashboard/eod-report" },
       { icon: BarChart2,     label: "Analytics",    href: "/dashboard/analytics" },
+      { icon: UserCog,       label: "Manage Setup", href: "/dashboard/manage-setup" },
     ],
   },
   {
