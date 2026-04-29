@@ -2585,12 +2585,12 @@ function TxLogPageContent() {
   const [editDocTypeCategory, setEditDocTypeCategory]   = useState<TaskCategory>("Production");
   const [editDocTypeCountType, setEditDocTypeCountType] = useState<CountType>("transaction");
 
-  // useEffect for auto showing the agent leaderboard  every 20 seconds
+  // Show leaderboard on mount + auto-show when top 3 changes
 useEffect(() => {
   let pollInterval: ReturnType<typeof setTimeout>;
   let isActive = true;
-  // Track top 3 agent IDs as a string key, e.g. "id1|id2|id3"
   let localTopThreeKey: string | null = null;
+  let hasShownOnMount = false; // ← track first-run show
 
   const checkTopAgent = async () => {
     if (!isActive) return;
@@ -2626,20 +2626,20 @@ useEffect(() => {
         })
       );
 
-      // Sort descending and take top 3
       const sorted = [...scores].sort((a, b) => b.score - a.score);
-      const newTopThreeKey = sorted
-        .slice(0, 3)
-        .map((s) => s.agentId)
-        .join("|");
+      const newTopThreeKey = sorted.slice(0, 3).map((s) => s.agentId).join("|");
 
-      // Open leaderboard only if top 3 order changed (skip on first run)
-      if (localTopThreeKey !== null && newTopThreeKey !== localTopThreeKey) {
+      // Show on first successful data load (page visit)
+      if (!hasShownOnMount) {
+        hasShownOnMount = true;
+        setShowLeaderboard(true);
+      }
+      // Also show whenever top 3 order changes after that
+      else if (localTopThreeKey !== null && newTopThreeKey !== localTopThreeKey) {
         setShowLeaderboard(true);
       }
 
       localTopThreeKey = newTopThreeKey;
-      // Still update top agent state if you use it elsewhere
       setCurrentTopAgentId(sorted[0]?.agentId ?? null);
 
     } catch (error) {
@@ -2659,6 +2659,7 @@ useEffect(() => {
     if (pollInterval) clearTimeout(pollInterval);
   };
 }, [date]);
+
 
   // news and announcement useEffect 
 useEffect(() => {
