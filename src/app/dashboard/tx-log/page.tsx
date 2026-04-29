@@ -2537,6 +2537,7 @@ function TxLogPageContent() {
   // agent leader board 
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const leaderboardDismissedAt = useRef<number>(0);
+  const [currentTopAgentId, setCurrentTopAgentId] = useState<string | null>(null);
 
   const [timerProductiveSeconds, setTimerProductiveSeconds] = useState(0);
   const [totalBioBreakSeconds, setTotalBioBreakSeconds]     = useState(0);
@@ -2586,41 +2587,78 @@ function TxLogPageContent() {
 
   // useEffect for auto showing the agent leaderboard  every 20 seconds
 useEffect(() => {
-  let timeoutId: ReturnType<typeof setTimeout>;
-  let isSubscribed = true;
+  let pollInterval: ReturnType<typeof setTimeout>;
+  let isActive = true;
+  // Track top 3 agent IDs as a string key, e.g. "id1|id2|id3"
+  let localTopThreeKey: string | null = null;
 
-  const CONFIG = {
-    MIN_DELAY_MS: 30_000,
-    MAX_DELAY_MS: 90_000,
-    LEADERBOARD_THRESHOLD_MS: 60_000
-  } as const;
+  const checkTopAgent = async () => {
+    if (!isActive) return;
 
-  const getRandomDelay = (): number => {
-    const { MIN_DELAY_MS, MAX_DELAY_MS } = CONFIG;
-    return Math.floor(Math.random() * (MAX_DELAY_MS - MIN_DELAY_MS + 1)) + MIN_DELAY_MS;
-  };
+    try {
+      const agentRes = await fetch("/api/kpi/agents");
+      const agentData = await agentRes.json();
+      const agents = agentData.agents ?? [];
 
-  const shouldShowLeaderboard = (): boolean => {
-    return Date.now() - leaderboardDismissedAt.current > CONFIG.LEADERBOARD_THRESHOLD_MS;
-  };
+      if (agents.length === 0) return;
 
-  const executeCheck = (): void => {
-    if (!isSubscribed) return;
+      const scores = await Promise.all(
+        agents.map(async (agent: Agent) => {
+          const txRes = await fetch(`/api/kpi/transactions?date=${date}&agentId=${agent._id}`);
+          const txData = await txRes.json();
+          const transactions = txData.transactions ?? [];
 
-    if (shouldShowLeaderboard()) {
-      setShowLeaderboard(true);
+          const completions = transactions.filter(
+            (t: Transaction) => t.status === "COMPLETION"
+          ).length;
+
+          const timerRes = await fetch(`/api/kpi/productivity-timer?agentId=${agent._id}&date=${date}`);
+          const timerData = await timerRes.json();
+          const timerRecord = timerData.record ?? null;
+
+          let productiveSeconds = timerRecord?.productiveSeconds ?? 0;
+          if (timerRecord?.timerStartEpoch && !timerRecord?.timerPaused) {
+            productiveSeconds += Math.floor((Date.now() - timerRecord.timerStartEpoch) / 1000);
+          }
+
+          const score = Math.round(productiveSeconds / 60) + completions * 12;
+          return { agentId: agent._id, score };
+        })
+      );
+
+      // Sort descending and take top 3
+      const sorted = [...scores].sort((a, b) => b.score - a.score);
+      const newTopThreeKey = sorted
+        .slice(0, 3)
+        .map((s) => s.agentId)
+        .join("|");
+
+      // Open leaderboard only if top 3 order changed (skip on first run)
+      if (localTopThreeKey !== null && newTopThreeKey !== localTopThreeKey) {
+        setShowLeaderboard(true);
+      }
+
+      localTopThreeKey = newTopThreeKey;
+      // Still update top agent state if you use it elsewhere
+      setCurrentTopAgentId(sorted[0]?.agentId ?? null);
+
+    } catch (error) {
+      console.error("Failed to check top agent:", error);
     }
 
-    timeoutId = setTimeout(executeCheck, getRandomDelay());
+    const randomDelay = Math.floor(Math.random() * 60000) + 30000;
+    if (isActive) {
+      pollInterval = setTimeout(checkTopAgent, randomDelay);
+    }
   };
 
-  timeoutId = setTimeout(executeCheck, getRandomDelay());
+  checkTopAgent();
 
   return () => {
-    isSubscribed = false;
-    if (timeoutId) clearTimeout(timeoutId);
+    isActive = false;
+    if (pollInterval) clearTimeout(pollInterval);
   };
-}, []);
+}, [date]);
 
   // news and announcement useEffect 
 useEffect(() => {
