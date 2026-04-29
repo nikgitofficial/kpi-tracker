@@ -2585,13 +2585,41 @@ function TxLogPageContent() {
   const [editDocTypeCountType, setEditDocTypeCountType] = useState<CountType>("transaction");
 
   // useEffect for auto showing the agent leaderboard  every 20 seconds
-  useEffect(() => {
-  const id = setInterval(() => {
-    if (Date.now() - leaderboardDismissedAt.current > 60_000) {
+useEffect(() => {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  let isSubscribed = true;
+
+  const CONFIG = {
+    MIN_DELAY_MS: 30_000,
+    MAX_DELAY_MS: 90_000,
+    LEADERBOARD_THRESHOLD_MS: 60_000
+  } as const;
+
+  const getRandomDelay = (): number => {
+    const { MIN_DELAY_MS, MAX_DELAY_MS } = CONFIG;
+    return Math.floor(Math.random() * (MAX_DELAY_MS - MIN_DELAY_MS + 1)) + MIN_DELAY_MS;
+  };
+
+  const shouldShowLeaderboard = (): boolean => {
+    return Date.now() - leaderboardDismissedAt.current > CONFIG.LEADERBOARD_THRESHOLD_MS;
+  };
+
+  const executeCheck = (): void => {
+    if (!isSubscribed) return;
+
+    if (shouldShowLeaderboard()) {
       setShowLeaderboard(true);
     }
-  }, 60_000);
-  return () => clearInterval(id);
+
+    timeoutId = setTimeout(executeCheck, getRandomDelay());
+  };
+
+  timeoutId = setTimeout(executeCheck, getRandomDelay());
+
+  return () => {
+    isSubscribed = false;
+    if (timeoutId) clearTimeout(timeoutId);
+  };
 }, []);
 
   // news and announcement useEffect 
