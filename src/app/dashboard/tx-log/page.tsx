@@ -364,9 +364,18 @@ function AnnouncementModal({
     setLoading(true);
     setApiError(false);
     fetchAllHolidays()
-      .then(setHolidays)
-      .catch(() => setApiError(true))
-      .finally(() => setLoading(false));
+  .then(results => {
+    const seen = new Set<string>();
+    setHolidays(
+      results.filter(a => {
+        if (seen.has(a.id)) return false;
+        seen.add(a.id);
+        return true;
+      })
+    );
+  })
+  .catch(() => setApiError(true))
+  .finally(() => setLoading(false));
   }, [open]);
 
   const persist = (ids: Set<string>) => {
@@ -389,10 +398,10 @@ function AnnouncementModal({
   };
 
   // Merged list: pinned reminders + live holiday announcements
-  const ALL_ANNOUNCEMENTS: Announcement[] = [
-    ...PINNED_ANNOUNCEMENTS,
-    ...holidays,
-  ];
+ const ALL_ANNOUNCEMENTS: Announcement[] = [
+  ...PINNED_ANNOUNCEMENTS,
+  ...holidays,
+].filter((ann, index, self) => self.findIndex(a => a.id === ann.id) === index);
 
   const unreadCount = ALL_ANNOUNCEMENTS.filter((a) => !readIds.has(a.id)).length;
 
@@ -2571,11 +2580,11 @@ function TxLogPageContent() {
   const [editDocTypeCountType, setEditDocTypeCountType] = useState<CountType>("transaction");
 
   // news and announcement useEffect 
-  useEffect(() => {
+useEffect(() => {
   try {
     const raw = localStorage.getItem(annLsKey("global"));
     const readSet: Set<string> = raw ? new Set(JSON.parse(raw)) : new Set();
-    const hasUnread = ANNOUNCEMENTS.some(a => !readSet.has(a.id));
+    const hasUnread = PINNED_ANNOUNCEMENTS.some(a => !readSet.has(a.id));
     if (hasUnread) setShowAnnouncements(true);
   } catch {
     setShowAnnouncements(true);
