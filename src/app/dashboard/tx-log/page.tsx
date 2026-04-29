@@ -218,7 +218,7 @@ const PINNED_ANNOUNCEMENTS: Announcement[] = [
   {
     id:        "ann-r003",
     title:     "Review all entries before submitting",
-    body:      "Double-check task types, company names, volumes, and statuses before your end-of-day submission. Corrections after submission require supervisor approval.",
+    body:      "Double-check task types, company names, volumes, and statuses before your end-of-day submission. Corrections after submission require supervisor or team leader approval.",
     priority:  "info",
     tag:       "Info",
     pinned:    true,
@@ -441,7 +441,7 @@ function AnnouncementModal({
               <Bell size={13} className="text-indigo-500" />
             </div>
             <h2 className="text-sm font-semibold text-slate-900 dark:text-zinc-100">
-              Announcements &amp; News
+              Reminders &amp; Holidays
             </h2>
             {unreadCount > 0 && (
               <span className="text-[10px] font-semibold bg-indigo-50 border border-indigo-200 text-indigo-600 rounded-full px-2 py-0.5">
