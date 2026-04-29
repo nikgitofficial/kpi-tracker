@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
   } else if (from) {
     timerQuery.date = from;
   }
-  
+
   const timerRecords = await ProductivityTimer.find(timerQuery).lean();
 
   // Calculate total productive seconds with live running time
@@ -42,7 +42,6 @@ export async function GET(req: NextRequest) {
 
   for (const timer of timerRecords) {
     let secs = timer.productiveSeconds ?? 0;
-    // If timer is actively running (not paused and has a start epoch), add live elapsed time
     if (timer.timerStartEpoch && !timer.timerPaused) {
       secs += Math.floor((now - timer.timerStartEpoch) / 1000);
     }
@@ -51,7 +50,7 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Summary ──
-  const totalTx = txs.length;
+  const totalTx   = txs.length;
   const done      = txs.filter((t) => t.status === "COMPLETION").length;
   const pending   = txs.filter((t) => t.status === "PENDING").length;
   const hold      = txs.filter((t) => t.status === "HOLD").length;
@@ -62,6 +61,7 @@ export async function GET(req: NextRequest) {
     ? Math.round(tatsWithValue.reduce((a, t) => a + (t.tat ?? 0), 0) / tatsWithValue.length)
     : 0;
 
+  // FIX: completion rate uses total TX as denominator (consistent with agent-level rate)
   const completionRate = totalTx ? Math.round((done / totalTx) * 100) : 0;
 
   // ── Per-agent aggregation ──
@@ -96,7 +96,7 @@ export async function GET(req: NextRequest) {
     a.total++;
     if (tx.status === "COMPLETION") a.done++;
     if (tx.status === "PENDING")    a.pending++;
-    if (tx.status === "HOLD") a.hold++;
+    if (tx.status === "HOLD")       a.hold++;
     if (tx.status === "ESCALATION") a.escalated++;
     if (tx.tat !== undefined && tx.tat !== null) {
       a.tatSum += tx.tat;
@@ -106,30 +106,26 @@ export async function GET(req: NextRequest) {
 
   const agentStats = Object.entries(agentMap)
     .map(([id, a]) => ({
-      agentId:   id,
-      name:      a.name,
-      total:     a.total,
-      done:      a.done,
-      pending:   a.pending,
-      hold: a.hold,
+      agentId:  id,
+      name:     a.name,
+      total:    a.total,
+      done:     a.done,
+      pending:  a.pending,
+      hold:     a.hold,
       escalated: a.escalated,
-      avgTat:    a.tatCount ? Math.round(a.tatSum / a.tatCount) : 0,
-      productiveSeconds: agentProductiveSeconds[id] ?? 0, // Add productive seconds from timer
-      // Exclude NO_DOC from rate denominator
-      rate:
-        a.done + a.pending + a.escalated > 0
-          ? Math.round((a.done / (a.done + a.pending + a.escalated)) * 100)
-          : 0,
+      avgTat:   a.tatCount ? Math.round(a.tatSum / a.tatCount) : 0,
+      productiveSeconds: agentProductiveSeconds[id] ?? 0,
+      // FIX: rate = done / total (all statuses in denominator → honest completion rate)
+      // Agents with 0 total get null so they are excluded from spotlight comparisons
+      rate: a.total > 0 ? Math.round((a.done / a.total) * 100) : 0,
     }))
-    // Stable secondary sort by name so equal-rate agents don't randomly swap
+    // Stable sort: by total desc, then name asc
     .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
 
   // ── Per-agent daily rates (for streak alerts) ──
-  // Build date range array
   const agentDailyRates: Record<string, { date: string; rate: number | null }[]> = {};
 
   if (from && to) {
-    // Build list of dates in range
     const dates: string[] = [];
     const cur = new Date(from + "T00:00:00");
     const end = new Date(to   + "T00:00:00");
@@ -138,29 +134,27 @@ export async function GET(req: NextRequest) {
       cur.setDate(cur.getDate() + 1);
     }
 
-    // Per-agent, per-day counts
-    type DayBucket = { done: number; pending: number; escalated: number };
+    type DayBucket = { done: number; pending: number; hold: number; escalated: number; total: number };
     const agentDayMap: Record<string, Record<string, DayBucket>> = {};
 
     for (const tx of txs) {
       if (!agentDayMap[tx.agentId]) agentDayMap[tx.agentId] = {};
       if (!agentDayMap[tx.agentId][tx.date])
-        agentDayMap[tx.agentId][tx.date] = { done: 0, pending: 0, escalated: 0 };
+        agentDayMap[tx.agentId][tx.date] = { done: 0, pending: 0, hold: 0, escalated: 0, total: 0 };
       const b = agentDayMap[tx.agentId][tx.date];
+      b.total++;
       if (tx.status === "COMPLETION") b.done++;
       if (tx.status === "PENDING")    b.pending++;
+      if (tx.status === "HOLD")       b.hold++;
       if (tx.status === "ESCALATION") b.escalated++;
     }
 
     for (const agentId of Object.keys(agentMap)) {
       agentDailyRates[agentId] = dates.map((date) => {
         const b = agentDayMap[agentId]?.[date];
-        if (!b) return { date, rate: null };
-        const denom = b.done + b.pending + b.escalated;
-        return {
-          date,
-          rate: denom > 0 ? Math.round((b.done / denom) * 100) : null,
-        };
+        if (!b || b.total === 0) return { date, rate: null };
+        // FIX: daily rate also uses total (consistent with summary rate)
+        return { date, rate: Math.round((b.done / b.total) * 100) };
       });
     }
   }
@@ -193,17 +187,17 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => a.date.localeCompare(b.date));
 
   return NextResponse.json({
-    summary: { 
-      totalTx, 
-      done, 
-      pending, 
-      hold, 
-      escalated, 
-      avgTat, 
-      completionRate, 
-      totalProductiveSeconds  // Now from ProductivityTimer model with live calculation
+    summary: {
+      totalTx,
+      done,
+      pending,
+      hold,
+      escalated,
+      avgTat,
+      completionRate,
+      totalProductiveSeconds,
     },
-    agentStats,  // Now includes productiveSeconds for each agent
+    agentStats,
     docTypeStats,
     dailyTrend,
     agentDailyRates,
