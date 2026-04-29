@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { AgentLeaderboard } from "@/components/ui/AgentLeaderboard";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 import {
   Activity, TrendingUp, CheckCircle2, Clock,
@@ -914,16 +915,24 @@ export default function ActivityPage() {
                 <p className="text-slate-500 dark:text-zinc-400 text-sm">No agents found.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {agentStatuses.map((s, i) => (
-                  <AgentStatusCard
-                    key={s.agent._id}
-                    status={s}
-                    index={i}
-                    onRefresh={() => refreshAgent(s.agent._id)}
-                  />
-                ))}
-              </div>
+              <div className="flex gap-4 items-start">
+  {/* Agent cards */}
+  <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 min-w-0">
+    {agentStatuses.map((s, i) => (
+      <AgentStatusCard
+        key={s.agent._id}
+        status={s}
+        index={i}
+        onRefresh={() => refreshAgent(s.agent._id)}
+      />
+    ))}
+  </div>
+
+  {/* Leaderboard — sticky sidebar */}
+  <div className="w-72 flex-shrink-0 sticky top-6">
+    <AgentLeaderboard statuses={agentStatuses} />
+  </div>
+</div>
             )}
 
             <p className="text-center text-[10px] text-slate-300 dark:text-zinc-700 mt-6 uppercase tracking-widest">

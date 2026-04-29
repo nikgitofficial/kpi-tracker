@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { AgentLeaderboard } from "@/components/ui/AgentLeaderboard";
 import { createPortal } from "react-dom";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 import {
   Plus, Trash2, Pencil, CheckCircle2,
   Clock, AlertTriangle, Users, Tag, FileText, FileSpreadsheet,
   Pause, ChevronDown, ChevronRight, ListPlus, X, Play, Square,
-  Timer, PauseCircle, Check, Info, AlertCircle,Bell, Pin,
+  Timer, PauseCircle, Check, Info, AlertCircle,Bell, Pin,Trophy,
 } from "lucide-react";
 import { SnackbarProvider, useSnackbar } from "@/contexts/SnackbarContext";
 
@@ -2532,6 +2533,10 @@ function TxLogPageContent() {
 
   // news and announcement 
   const [showAnnouncements, setShowAnnouncements] = useState(false);
+  
+  // agent leader board 
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const leaderboardDismissedAt = useRef<number>(0);
 
   const [timerProductiveSeconds, setTimerProductiveSeconds] = useState(0);
   const [totalBioBreakSeconds, setTotalBioBreakSeconds]     = useState(0);
@@ -2578,6 +2583,16 @@ function TxLogPageContent() {
   const [editDocTypeName, setEditDocTypeName]           = useState("");
   const [editDocTypeCategory, setEditDocTypeCategory]   = useState<TaskCategory>("Production");
   const [editDocTypeCountType, setEditDocTypeCountType] = useState<CountType>("transaction");
+
+  // useEffect for auto showing the agent leaderboard  every 20 seconds
+  useEffect(() => {
+  const id = setInterval(() => {
+    if (Date.now() - leaderboardDismissedAt.current > 20_000) {
+      setShowLeaderboard(true);
+    }
+  }, 20_000);
+  return () => clearInterval(id);
+}, []);
 
   // news and announcement useEffect 
 useEffect(() => {
@@ -3086,6 +3101,17 @@ useEffect(() => {
           <div className="flex items-center gap-2">
             <input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm text-slate-700 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
             <button onClick={() => setDate(today())} className="px-3 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-500 text-xs font-semibold hover:bg-indigo-100 transition-colors">Today</button>
+            <button
+  onClick={() => setShowLeaderboard(s => !s)}
+  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
+    showLeaderboard
+      ? "bg-amber-50 border-amber-200 text-amber-600"
+      : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100"
+  }`}
+>
+  <Trophy size={13} />
+  Leaderboard
+</button>
             <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700 mx-1" />
             <button onClick={handleExcelExport} disabled={!canExport || exporting === "excel"} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${canExport ? "bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-100" : "bg-slate-50 border-slate-200 text-slate-300 cursor-not-allowed"}`}>
               <FileSpreadsheet size={13} />
@@ -3591,8 +3617,42 @@ useEffect(() => {
   onClose={() => setShowAnnouncements(false)}
   storageKey="global"
 />
+{/* ── Leaderboard Slide-in Panel ── */}
+{showLeaderboard && (
+  <div className="fixed inset-0 z-[55] flex justify-end pointer-events-none">
+    <div
+      className="absolute inset-0 bg-black/20 backdrop-blur-sm pointer-events-auto"
+      onClick={() => setShowLeaderboard(false)}
+    />
+    <div className="relative w-[340px] h-full bg-slate-50 dark:bg-zinc-950 border-l border-slate-200 dark:border-zinc-700 overflow-y-auto pointer-events-auto shadow-2xl flex flex-col">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <Trophy size={14} className="text-amber-500" />
+          <span className="text-sm font-semibold text-slate-800 dark:text-zinc-100">Live Leaderboard</span>
+        </div>
+        <button
+  onClick={() => {
+    leaderboardDismissedAt.current = Date.now();
+    setShowLeaderboard(false);
+  }}
+  className="text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 transition-colors"
+>
+  <X size={15} />
+</button>
+      </div>
+      <div className="p-4 flex-1">
+        <AgentLeaderboard
+          date={date}
+          refreshIntervalSeconds={15}
+          className="w-full"
+        />
+      </div>
+    </div>
+  </div>
+)}
 
-      </>} {/* closes !bootstrapLoading fragment */}
+      </>}
+       {/* closes !bootstrapLoading fragment */}
     </div>
   );
 }
