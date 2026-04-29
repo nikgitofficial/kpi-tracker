@@ -2587,10 +2587,10 @@ function TxLogPageContent() {
   // useEffect for auto showing the agent leaderboard  every 20 seconds
   useEffect(() => {
   const id = setInterval(() => {
-    if (Date.now() - leaderboardDismissedAt.current > 20_000) {
+    if (Date.now() - leaderboardDismissedAt.current > 60_000) {
       setShowLeaderboard(true);
     }
-  }, 20_000);
+  }, 60_000);
   return () => clearInterval(id);
 }, []);
 
