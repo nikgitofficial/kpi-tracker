@@ -281,6 +281,11 @@ function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
   const hold    = realTx.filter(t => t.status === "HOLD").length;
   const esc     = realTx.filter(t => t.status === "ESCALATION").length;
   const totalTx = realTx.length;
+  const docTypeMap: Record<string, number> = {};
+  realTx.forEach(t => {
+  docTypeMap[t.docType] = (docTypeMap[t.docType] ?? 0) + 1;
+  });
+const docTypeEntries = Object.entries(docTypeMap).sort((a, b) => b[1] - a[1]);
 
   const SHIFT_SECONDS = 8 * 3600;
   const prodPct       = Math.min(100, Math.round((productiveSeconds / SHIFT_SECONDS) * 100));
@@ -412,6 +417,44 @@ function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
             </div>
           ))}
         </div>
+        
+        {/* Task type breakdown */}
+      {docTypeEntries.length > 0 && (
+        <div className="px-4 py-2.5 border-b border-slate-100 dark:border-zinc-800">
+          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-300 dark:text-zinc-600 mb-2">
+            Task Breakdown
+          </p>
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="border-b border-slate-100 dark:border-zinc-800">
+                <th className="text-left text-[9px] font-semibold uppercase tracking-wide text-slate-400 dark:text-zinc-500 pb-1">
+                  Task Type
+                </th>
+                <th className="text-right text-[9px] font-semibold uppercase tracking-wide text-slate-400 dark:text-zinc-500 pb-1">
+                  Count
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {docTypeEntries.map(([name, count], i) => (
+                <tr
+                  key={name}
+                  className={i < docTypeEntries.length - 1
+                    ? "border-b border-slate-50 dark:border-zinc-800/50"
+                    : ""}
+                >
+                  <td className="py-1 text-[10px] text-slate-600 dark:text-zinc-300 truncate max-w-[120px]">
+                    {name}
+                  </td>
+                  <td className="py-1 text-right text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                    {count}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
         {/* Productive time bar */}
         <div className="px-4 py-3 border-b border-slate-100 dark:border-zinc-800">
