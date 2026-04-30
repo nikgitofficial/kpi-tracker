@@ -686,17 +686,17 @@ export default function ActivityPage() {
   }, []);
 
   /* ── Build agent statuses for the status view ── */
-  const agentStatuses: AgentStatus[] = agents.map(agent => {
+const agentStatuses: AgentStatus[] = agents
+  .map(agent => {
     const session = sessions[agent._id] ?? null;
     const txs     = agentTxMap[agent._id] ?? [];
 
     const isOnBreak = !!(session?.breaks.find(b => !b.endEpoch));
-    // isActive: session exists and open, OR timer is currently running (timerStartEpoch set and not paused)
     const timerRaw  = agentTimerMap[agent._id];
     const timerIsRunning = !!(timerRaw && timerRaw.timerStartEpoch && !timerRaw.timerPaused);
     const isActive = !!(
-  (session && !session.sessionEndEpoch && !isOnBreak && timerIsRunning) || timerIsRunning
-);
+      (session && !session.sessionEndEpoch && !isOnBreak && timerIsRunning) || timerIsRunning
+    );
 
     const { productiveSeconds, timerPaused, timerExists } =
       extractTimerState(timerRaw);
@@ -711,7 +711,16 @@ export default function ActivityPage() {
       isOnBreak,
       isActive,
     };
+  })
+  .sort((a, b) => {
+    const completedA = a.transactions
+      .filter(t => t.docType !== "__PROD_TIMER__" && t.status === "COMPLETION").length;
+    const completedB = b.transactions
+      .filter(t => t.docType !== "__PROD_TIMER__" && t.status === "COMPLETION").length;
+    if (completedB !== completedA) return completedB - completedA;
+    return b.productiveSeconds - a.productiveSeconds;
   });
+  
 
   /* ── Team summary counts ── */
   const activeCount     = agentStatuses.filter(s => s.isActive).length;
