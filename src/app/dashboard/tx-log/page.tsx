@@ -2589,8 +2589,6 @@ function TxLogPageContent() {
 useEffect(() => {
   let pollInterval: ReturnType<typeof setTimeout>;
   let isActive = true;
-  let localTopThreeKey: string | null = null;
-  let hasShownOnMount = false; // ← track first-run show
 
   const checkTopAgent = async () => {
     if (!isActive) return;
@@ -2627,19 +2625,6 @@ useEffect(() => {
       );
 
       const sorted = [...scores].sort((a, b) => b.score - a.score);
-      const newTopThreeKey = sorted.slice(0, 3).map((s) => s.agentId).join("|");
-
-      // Show on first successful data load (page visit)
-      if (!hasShownOnMount) {
-        hasShownOnMount = true;
-        setShowLeaderboard(true);
-      }
-      // Also show whenever top 3 order changes after that
-      else if (localTopThreeKey !== null && newTopThreeKey !== localTopThreeKey) {
-        setShowLeaderboard(true);
-      }
-
-      localTopThreeKey = newTopThreeKey;
       setCurrentTopAgentId(sorted[0]?.agentId ?? null);
 
     } catch (error) {
@@ -2659,7 +2644,6 @@ useEffect(() => {
     if (pollInterval) clearTimeout(pollInterval);
   };
 }, [date]);
-
 
   // news and announcement useEffect 
 useEffect(() => {
