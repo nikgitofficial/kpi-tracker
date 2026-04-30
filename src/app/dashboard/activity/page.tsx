@@ -29,6 +29,7 @@ interface Transaction {
   productiveSeconds?: number;
   countType?: "transaction" | "volume";
   ownerEmail?: string;
+  subtasks?: { _id: string; docType: string; status: string }[]; 
 }
 
 interface TimerRecord {
@@ -282,9 +283,12 @@ function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
   const esc     = realTx.filter(t => t.status === "ESCALATION").length;
   const totalTx = realTx.length;
   const docTypeMap: Record<string, number> = {};
-  realTx.forEach(t => {
+realTx.forEach(t => {
   docTypeMap[t.docType] = (docTypeMap[t.docType] ?? 0) + 1;
+  (t.subtasks ?? []).forEach(st => {
+    docTypeMap[st.docType] = (docTypeMap[st.docType] ?? 0) + 1;
   });
+});
 const docTypeEntries = Object.entries(docTypeMap).sort((a, b) => b[1] - a[1]);
 
   const SHIFT_SECONDS = 8 * 3600;
@@ -417,7 +421,7 @@ const docTypeEntries = Object.entries(docTypeMap).sort((a, b) => b[1] - a[1]);
             </div>
           ))}
         </div>
-        
+
         {/* Task type breakdown */}
       {docTypeEntries.length > 0 && (
         <div className="px-4 py-2.5 border-b border-slate-100 dark:border-zinc-800">
@@ -436,21 +440,37 @@ const docTypeEntries = Object.entries(docTypeMap).sort((a, b) => b[1] - a[1]);
               </tr>
             </thead>
             <tbody>
-              {docTypeEntries.map(([name, count], i) => (
-                <tr
-                  key={name}
-                  className={i < docTypeEntries.length - 1
-                    ? "border-b border-slate-50 dark:border-zinc-800/50"
-                    : ""}
-                >
-                  <td className="py-1 text-[10px] text-slate-600 dark:text-zinc-300 truncate max-w-[120px]">
-                    {name}
-                  </td>
-                  <td className="py-1 text-right text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
-                    {count}
-                  </td>
-                </tr>
-              ))}
+              {docTypeEntries.map(([name, count], i) => {
+  const isSubtaskOnly = !realTx.some(t => t.docType === name);
+  const isParent = realTx.some(t => t.docType === name);
+  const hasSubtaskOccurrence = realTx.some(t =>
+    (t.subtasks ?? []).some(st => st.docType === name)
+  );
+  const showSubBadge = hasSubtaskOccurrence && !isParent;
+
+  return (
+    <tr
+      key={name}
+      className={i < docTypeEntries.length - 1
+        ? "border-b border-slate-50 dark:border-zinc-800/50"
+        : ""}
+    >
+      <td className="py-1 text-[10px] text-slate-600 dark:text-zinc-300 truncate max-w-[120px]">
+        <div className="flex items-center gap-1">
+          {name}
+          {showSubBadge && (
+            <span className="inline-flex items-center px-1 py-0.5 rounded text-[8px] font-bold bg-violet-50 dark:bg-violet-950/40 border border-violet-200 dark:border-violet-800 text-violet-500 dark:text-violet-400 flex-shrink-0">
+              SUBTASK
+            </span>
+          )}
+        </div>
+      </td>
+      <td className="py-1 text-right text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+        {count}
+      </td>
+    </tr>
+  );
+})}
             </tbody>
           </table>
         </div>
