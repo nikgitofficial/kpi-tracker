@@ -166,7 +166,9 @@ export function AgentLeaderboard({
       const done = s.transactions.filter(
         (t) => t.status === "COMPLETION" && t.docType !== "__PROD_TIMER__"
       ).length;
-      const pts = Math.round(s.productiveSeconds / 60) + done * 12;
+      const totalTx = s.transactions.filter(t => t.docType !== "__PROD_TIMER__").length;
+      const esc = s.transactions.filter(t => t.status === "ESCALATION" && t.docType !== "__PROD_TIMER__").length;
+      const pts = (done * 10) + (totalTx * 2) - (esc * 3);
       return { ...s, txDone: done, pts };
     })
     .sort((a, b) => b.pts - a.pts);
@@ -312,7 +314,7 @@ export function AgentLeaderboard({
       {/* Footer */}
       <div className="px-4 py-2.5 bg-slate-50 dark:bg-zinc-800/50 border-t border-slate-100 dark:border-zinc-800">
         <p className="text-[10px] text-slate-400 dark:text-zinc-500 text-center">
-          pts = productive mins + (completions × 12)
+          pts = (done × 10) + (tx × 2) − (escalations × 3)
         </p>
       </div>
     </div>

@@ -717,8 +717,12 @@ const agentStatuses: AgentStatus[] = agents
       .filter(t => t.docType !== "__PROD_TIMER__" && t.status === "COMPLETION").length;
     const doneB = b.transactions
       .filter(t => t.docType !== "__PROD_TIMER__" && t.status === "COMPLETION").length;
-    const ptsA = Math.round(a.productiveSeconds / 60) + doneA * 12;
-    const ptsB = Math.round(b.productiveSeconds / 60) + doneB * 12;
+    const totalTxA = a.transactions.filter(t => t.docType !== "__PROD_TIMER__").length;
+const totalTxB = b.transactions.filter(t => t.docType !== "__PROD_TIMER__").length;
+const escA = a.transactions.filter(t => t.status === "ESCALATION" && t.docType !== "__PROD_TIMER__").length;
+const escB = b.transactions.filter(t => t.status === "ESCALATION" && t.docType !== "__PROD_TIMER__").length;
+const ptsA = (doneA * 10) + (totalTxA * 2) - (escA * 3);
+const ptsB = (doneB * 10) + (totalTxB * 2) - (escB * 3);
     return ptsB - ptsA;
   });
   
