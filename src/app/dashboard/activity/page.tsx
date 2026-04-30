@@ -712,13 +712,14 @@ const agentStatuses: AgentStatus[] = agents
       isActive,
     };
   })
-  .sort((a, b) => {
-    const completedA = a.transactions
+   .sort((a, b) => {
+    const doneA = a.transactions
       .filter(t => t.docType !== "__PROD_TIMER__" && t.status === "COMPLETION").length;
-    const completedB = b.transactions
+    const doneB = b.transactions
       .filter(t => t.docType !== "__PROD_TIMER__" && t.status === "COMPLETION").length;
-    if (completedB !== completedA) return completedB - completedA;
-    return b.productiveSeconds - a.productiveSeconds;
+    const ptsA = Math.round(a.productiveSeconds / 60) + doneA * 12;
+    const ptsB = Math.round(b.productiveSeconds / 60) + doneB * 12;
+    return ptsB - ptsA;
   });
   
 
