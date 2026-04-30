@@ -1,8 +1,5 @@
-import NextAuth from "next-auth";
-import { authConfig } from "@/lib/auth.config";
+import { auth } from "@/lib/auth"; // ✅ Use the SAME auth instance
 import { NextResponse } from "next/server";
-
-const { auth } = NextAuth(authConfig);
 
 const PUBLIC_PATHS = [
   "/login",
