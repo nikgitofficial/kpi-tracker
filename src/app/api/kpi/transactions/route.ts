@@ -297,10 +297,23 @@ export async function DELETE(req: NextRequest) {
     if (!session?.user?.email)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { id } = await req.json();
-    if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
+    const body = await req.json();
+    const { id, agentId, date, deleteAll } = body;
 
     await connectDB();
+
+    // Bulk delete: all transactions for an agent on a date
+    if (deleteAll && agentId && date) {
+      const result = await Transaction.deleteMany({
+        ownerEmail: session.user.email,
+        agentId,
+        date,
+      });
+      return NextResponse.json({ success: true, deleted: result.deletedCount });
+    }
+
+    // Single delete (existing behavior)
+    if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
     await Transaction.deleteOne({ _id: id, ownerEmail: session.user.email });
     return NextResponse.json({ success: true });
   } catch (err) {

@@ -2517,6 +2517,317 @@ function LogTransactionModal({
 }
 
 /* ═══════════════════════════════════════════════════════
+   ─── Import Excel Modal
+   ═══════════════════════════════════════════════════════ */
+interface ImportRow {
+  docType: string;
+  volume: number;
+  category: TaskCategory;
+  status: Transaction["status"];
+  notes: string;
+}
+
+function ImportExcelModal({
+  open,
+  onClose,
+  docTypes,
+  selectedAgent,
+  date,
+  onImported,
+}: {
+  open: boolean;
+  onClose: () => void;
+  docTypes: DocType[];
+  selectedAgent: Agent;
+  date: string;
+  onImported: () => void;
+}) {
+  const { showSnackbar } = useSnackbar();
+  const [rows, setRows] = useState<ImportRow[]>([]);
+  const [fileName, setFileName] = useState("");
+  const [parsing, setParsing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [parseError, setParseError] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const VALID_STATUSES = new Set(["COMPLETION", "PENDING", "ESCALATION", "HOLD"]);
+
+  const normalizeStatus = (raw: string): Transaction["status"] => {
+    const up = (raw ?? "").toUpperCase().trim();
+    if (VALID_STATUSES.has(up)) return up as Transaction["status"];
+    return "COMPLETION";
+  };
+
+  const normalizeCategory = (raw: string): TaskCategory => {
+    if ((raw ?? "").toLowerCase().includes("non")) return "Non-Production";
+    return "Production";
+  };
+
+  const handleFile = async (file: File) => {
+    setParseError("");
+    setRows([]);
+    setFileName(file.name);
+    setParsing(true);
+
+    try {
+      // Dynamically load SheetJS
+      await new Promise<void>((resolve, reject) => {
+        if ((window as any).XLSX) { resolve(); return; }
+        const s = document.createElement("script");
+        s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+        s.onload = () => resolve();
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+
+      const XLSX = (window as any).XLSX;
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: "array" });
+
+      // Read "Transactions" sheet (first sheet as fallback)
+      const sheetName = wb.SheetNames.includes("Transactions")
+        ? "Transactions"
+        : wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
+      const data: Record<string, any>[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
+
+      if (!data.length) {
+        setParseError("No rows found in the Transactions sheet.");
+        setParsing(false);
+        return;
+      }
+
+      const parsed: ImportRow[] = data
+        .filter(r => r["Type of Task"] && String(r["Type of Task"]).trim())
+        .map(r => ({
+          docType:  String(r["Type of Task"]).trim(),
+          volume:   Number(r["Volume"]) || 1,
+          category: normalizeCategory(String(r["Category"] ?? "")),
+          status:   normalizeStatus(String(r["Status"] ?? "")),
+          notes:    String(r["Notes"] ?? "").trim(),
+        }));
+
+      if (!parsed.length) {
+        setParseError("Could not find any valid rows. Make sure the sheet has a 'Type of Task' column.");
+        setParsing(false);
+        return;
+      }
+
+      setRows(parsed);
+    } catch (err) {
+      setParseError("Failed to parse the file. Make sure it's a valid .xlsx file.");
+      console.error(err);
+    } finally {
+      setParsing(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  };
+
+  const handleSaveAll = async () => {
+    if (!rows.length) return;
+    setSaving(true);
+
+    const docTypeMap: Record<string, DocType> = {};
+    docTypes.forEach(dt => { docTypeMap[dt.name] = dt; });
+
+    let saved = 0;
+    let failed = 0;
+
+    for (const row of rows) {
+      const foundDocType = docTypeMap[row.docType];
+      const res = await fetch("/api/kpi/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId:     selectedAgent._id,
+          agentName:   selectedAgent.name,
+          docType:     row.docType,
+          companyName: "Imported",
+          volume:      row.volume,
+          date,
+          status:      row.status,
+          notes:       row.notes || undefined,
+          startEpoch:  Date.now(),
+          elapsedSeconds: 0,
+          taskCategory: row.category,
+          countType:   foundDocType?.countType ?? "transaction",
+          subtasks:    [],
+        }),
+      });
+      if (res.ok) saved++; else failed++;
+    }
+
+    setSaving(false);
+
+    if (failed === 0) {
+      showSnackbar("success", `${saved} transactions imported`, "All rows have been saved to the log");
+    } else {
+      showSnackbar("warning", `${saved} saved, ${failed} failed`, "Some rows could not be saved");
+    }
+
+    onImported();
+    onClose();
+    setRows([]);
+    setFileName("");
+  };
+
+  const handleClose = () => {
+    if (saving) return;
+    onClose();
+    setRows([]);
+    setFileName("");
+    setParseError("");
+  };
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 backdrop-blur-sm"
+      onClick={handleClose}
+    >
+      <div
+        className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl shadow-2xl w-[560px] max-h-[80vh] flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-zinc-800 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-emerald-600 flex items-center justify-center">
+              <FileSpreadsheet size={14} className="text-white" />
+            </div>
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-zinc-100">Import from Excel</h2>
+          </div>
+          <button onClick={handleClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-4">
+          {/* Drop zone */}
+          {!rows.length && (
+            <div
+              onDrop={handleDrop}
+              onDragOver={e => e.preventDefault()}
+              onClick={() => fileRef.current?.click()}
+              className="border-2 border-dashed border-slate-200 dark:border-zinc-700 rounded-xl p-8 text-center cursor-pointer hover:border-emerald-400 hover:bg-emerald-50/30 dark:hover:bg-emerald-950/10 transition-all"
+            >
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".xlsx"
+                className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+              />
+              {parsing ? (
+                <div className="flex flex-col items-center gap-2">
+                  <div className="w-5 h-5 border-2 border-emerald-300 border-t-emerald-600 rounded-full animate-spin" />
+                  <p className="text-xs text-slate-400">Parsing file…</p>
+                </div>
+              ) : (
+                <>
+                  <FileSpreadsheet size={28} className="text-slate-300 dark:text-zinc-600 mx-auto mb-3" />
+                  <p className="text-sm font-semibold text-slate-600 dark:text-zinc-300">Drop your .xlsx file here</p>
+                  <p className="text-xs text-slate-400 dark:text-zinc-500 mt-1">or click to browse — use your exported tx-log file</p>
+                </>
+              )}
+            </div>
+          )}
+
+          {parseError && (
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900/40">
+              <AlertCircle size={13} className="text-red-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-red-600 dark:text-red-400">{parseError}</p>
+            </div>
+          )}
+
+          {/* Preview table */}
+          {rows.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-slate-600 dark:text-zinc-300">
+                  Preview — {rows.length} rows from <span className="text-emerald-600">{fileName}</span>
+                </p>
+                <button
+                  onClick={() => { setRows([]); setFileName(""); setParseError(""); }}
+                  className="text-xs text-slate-400 hover:text-red-500 transition-colors"
+                >
+                  Clear
+                </button>
+              </div>
+              <div className="rounded-xl border border-slate-200 dark:border-zinc-700 overflow-hidden max-h-[280px] overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-slate-50 dark:bg-zinc-800 border-b border-slate-200 dark:border-zinc-700">
+                    <tr>
+                      {["#", "Type of Task", "Category", "Status", "Vol", "Notes"].map(h => (
+                        <th key={h} className="px-3 py-2 text-left font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider text-[10px]">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r, i) => (
+                      <tr key={i} className="border-t border-slate-100 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800/50">
+                        <td className="px-3 py-2 text-slate-400 dark:text-zinc-500">{i + 1}</td>
+                        <td className="px-3 py-2 text-slate-700 dark:text-zinc-200 font-medium">{r.docType}</td>
+                        <td className="px-3 py-2"><CategoryBadge category={r.category} /></td>
+                        <td className="px-3 py-2"><StatusBadge status={r.status} /></td>
+                        <td className="px-3 py-2 text-slate-500 dark:text-zinc-400">{r.volume}</td>
+                        <td className="px-3 py-2 text-slate-400 dark:text-zinc-500 max-w-[120px] truncate">{r.notes || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Info note */}
+              <div className="mt-2 flex items-start gap-1.5 px-2 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40">
+                <Info size={11} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                <p className="text-[10px] text-amber-700 dark:text-amber-400">
+                  Company name will be set to <span className="font-semibold">"Imported"</span> — you can edit each row after import. Subtasks are not imported.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-2 px-6 py-4 border-t border-slate-100 dark:border-zinc-800 flex-shrink-0">
+          <button
+            onClick={handleClose}
+            disabled={saving}
+            className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 text-sm font-medium hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSaveAll}
+            disabled={!rows.length || saving}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors disabled:opacity-50"
+          >
+            {saving ? (
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Saving…
+              </>
+            ) : (
+              <>
+                <Check size={14} />
+                Import {rows.length > 0 ? `${rows.length} rows` : ""}
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════
    ─── Main Page Content
    ═══════════════════════════════════════════════════════ */
 function TxLogPageContent() {
@@ -2530,6 +2841,8 @@ function TxLogPageContent() {
   const [filterDocType, setFilterDocType] = useState("ALL");
   const [filterCategory, setFilterCategory] = useState<TaskCategory | "ALL">("ALL");
   const [date, setDate]                   = useState(today());
+  const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   // news and announcement 
   const [showAnnouncements, setShowAnnouncements] = useState(false);
@@ -2584,6 +2897,7 @@ function TxLogPageContent() {
   const [editDocTypeName, setEditDocTypeName]           = useState("");
   const [editDocTypeCategory, setEditDocTypeCategory]   = useState<TaskCategory>("Production");
   const [editDocTypeCountType, setEditDocTypeCountType] = useState<CountType>("transaction");
+  const [showImportModal, setShowImportModal] = useState(false);
 
   // Show leaderboard on mount + auto-show when top 3 changes
 useEffect(() => {
@@ -2955,6 +3269,25 @@ useEffect(() => {
     }
   };
 
+  const deleteAllTx = async () => {
+  if (!selectedAgent) return;
+  setDeletingAll(true);
+  const res = await fetch("/api/kpi/transactions", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ deleteAll: true, agentId: selectedAgent._id, date }),
+  });
+  setDeletingAll(false);
+  if (res.ok) {
+    const d = await res.json();
+    setShowDeleteAllConfirm(false);
+    setTransactions([]);
+    showSnackbar("warning", "All transactions deleted", `${d.deleted} transaction${d.deleted !== 1 ? "s" : ""} removed for ${selectedAgent.name}`);
+  } else {
+    showSnackbar("error", "Failed to delete", "Could not remove all transactions");
+  }
+};
+
   /* ── Settings helpers ── */
   const addAgent = async () => {
     if (!newAgent.trim()) return;
@@ -3163,6 +3496,19 @@ useEffect(() => {
   <Trophy size={13} />
   Leaderboard
 </button>
+<button
+  onClick={() => setShowImportModal(true)}
+  disabled={!selectedAgent}
+  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
+    selectedAgent
+      ? "bg-teal-50 border-teal-200 text-teal-600 hover:bg-teal-100"
+      : "bg-slate-50 border-slate-200 text-slate-300 cursor-not-allowed"
+  }`}
+>
+  <FileSpreadsheet size={13} />
+  Import
+</button>
+<div className="h-6 w-px bg-slate-200 dark:bg-zinc-700 mx-1" />
             <div className="h-6 w-px bg-slate-200 dark:bg-zinc-700 mx-1" />
             <button onClick={handleExcelExport} disabled={!canExport || exporting === "excel"} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${canExport ? "bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-100" : "bg-slate-50 border-slate-200 text-slate-300 cursor-not-allowed"}`}>
               <FileSpreadsheet size={13} />
@@ -3260,6 +3606,14 @@ useEffect(() => {
                           ? `${transactions.length} transactions`
                           : `${filteredTransactions.length} of ${transactions.length}`}
                       </span>
+                      {transactions.length > 0 && (
+    <button
+      onClick={() => setShowDeleteAllConfirm(true)}
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 border border-red-200 text-red-500 text-[11px] font-semibold hover:bg-red-100 transition-colors"
+    >
+      <Trash2 size={11} /> Delete All
+    </button>
+  )}
                       <button
                         onClick={() => { resetForm(); setShowLogModal(true); }}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold transition-colors"
@@ -3661,6 +4015,77 @@ useEffect(() => {
           </div>
         </div>
       )}
+
+      {/* ── Delete All Confirmation modal ── */}
+{showDeleteAllConfirm && selectedAgent && (
+  <div
+    className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm"
+    onClick={() => !deletingAll && setShowDeleteAllConfirm(false)}
+  >
+    <div
+      className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 w-[380px] shadow-xl"
+      onClick={e => e.stopPropagation()}
+    >
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-9 h-9 rounded-xl bg-red-50 border border-red-200 flex items-center justify-center flex-shrink-0">
+          <Trash2 size={15} className="text-red-500" />
+        </div>
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900 dark:text-zinc-100">
+            Delete All Transactions?
+          </h2>
+          <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">
+            {selectedAgent.name} · {formattedDate}
+          </p>
+        </div>
+      </div>
+      <div className="px-3 py-2.5 rounded-xl bg-red-50 border border-red-200 mb-5">
+        <p className="text-xs text-red-600 font-semibold mb-0.5">⚠ This cannot be undone</p>
+        <p className="text-[11px] text-red-500 leading-relaxed">
+          All {transactions.length} transaction{transactions.length !== 1 ? "s" : ""} and their subtasks for this agent on this date will be permanently deleted.
+        </p>
+      </div>
+      <div className="flex gap-2">
+        <button
+          onClick={() => setShowDeleteAllConfirm(false)}
+          disabled={deletingAll}
+          className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 text-sm font-medium hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={deleteAllTx}
+          disabled={deletingAll}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-semibold transition-colors disabled:opacity-50"
+        >
+          {deletingAll ? (
+            <>
+              <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              Deleting…
+            </>
+          ) : (
+            <>
+              <Trash2 size={13} />
+              Delete All {transactions.length}
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+      {/* ── Import Excel Modal ── */}
+{selectedAgent && (
+  <ImportExcelModal
+    open={showImportModal}
+    onClose={() => setShowImportModal(false)}
+    docTypes={docTypes}
+    selectedAgent={selectedAgent}
+    date={date}
+    onImported={fetchTx}
+  />
+)}
 
       {/* ── Announcements Modal ── */}
 <AnnouncementModal
