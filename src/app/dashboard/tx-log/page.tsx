@@ -2519,14 +2519,28 @@ function LogTransactionModal({
 /* ═══════════════════════════════════════════════════════
    ─── Import Excel Modal
    ═══════════════════════════════════════════════════════ */
+// ─── Drop-in replacement for the ImportExcelModal component and ImportRow type ───
+// Replace the existing ImportRow interface and ImportExcelModal function in your page file.
+// Everything else (types, helpers, other components) stays unchanged.
+
+/* ─── Updated ImportRow type ─── */
+interface ImportSubtaskRow {
+  docType: string;
+  number: number | undefined;
+  status: Transaction["status"];
+  notes: string;
+}
+
 interface ImportRow {
   docType: string;
   volume: number;
   category: TaskCategory;
   status: Transaction["status"];
   notes: string;
+  subtasks: ImportSubtaskRow[];
 }
 
+/* ─── Updated ImportExcelModal ─── */
 function ImportExcelModal({
   open,
   onClose,
@@ -2544,6 +2558,7 @@ function ImportExcelModal({
 }) {
   const { showSnackbar } = useSnackbar();
   const [rows, setRows] = useState<ImportRow[]>([]);
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [fileName, setFileName] = useState("");
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -2566,6 +2581,7 @@ function ImportExcelModal({
   const handleFile = async (file: File) => {
     setParseError("");
     setRows([]);
+    setExpandedRows(new Set());
     setFileName(file.name);
     setParsing(true);
 
@@ -2589,31 +2605,58 @@ function ImportExcelModal({
         ? "Transactions"
         : wb.SheetNames[0];
       const ws = wb.Sheets[sheetName];
-      const data: Record<string, any>[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
+      const rawData: Record<string, any>[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
 
-      if (!data.length) {
+      if (!rawData.length) {
         setParseError("No rows found in the Transactions sheet.");
         setParsing(false);
         return;
       }
 
-      const parsed: ImportRow[] = data
-        .filter(r => r["Type of Task"] && String(r["Type of Task"]).trim())
-        .map(r => ({
-          docType:  String(r["Type of Task"]).trim(),
-          volume:   Number(r["Volume"]) || 1,
-          category: normalizeCategory(String(r["Category"] ?? "")),
-          status:   normalizeStatus(String(r["Status"] ?? "")),
-          notes:    String(r["Notes"] ?? "").trim(),
-        }));
+      // ── Parse rows, grouping subtask rows under their parent transaction ──
+      // A subtask row is identified by having a non-empty "Subtask Task" column
+      // and an empty "Type of Task" column (matching the export format).
+      const parsed: ImportRow[] = [];
 
-      if (!parsed.length) {
-        setParseError("Could not find any valid rows. Make sure the sheet has a 'Type of Task' column.");
+      for (const r of rawData) {
+        const mainTask = String(r["Type of Task"] ?? "").trim();
+        const subtaskTask = String(r["Subtask Task"] ?? "").trim();
+
+        if (mainTask) {
+          // ── Main transaction row ──
+          parsed.push({
+            docType:  mainTask,
+            volume:   Number(r["Volume"]) || 1,
+            category: normalizeCategory(String(r["Category"] ?? "")),
+            status:   normalizeStatus(String(r["Status"] ?? "")),
+            notes:    String(r["Notes"] ?? "").trim(),
+            subtasks: [],
+          });
+        } else if (subtaskTask && parsed.length > 0) {
+          // ── Subtask row — attach to the most recent parent ──
+          const rawNum = r["Subtask Number"];
+          const parsedNum = rawNum !== "" && rawNum != null ? Number(rawNum) : undefined;
+          parsed[parsed.length - 1].subtasks.push({
+            docType: subtaskTask,
+            number:  !isNaN(parsedNum as number) ? parsedNum : undefined,
+            status:  normalizeStatus(String(r["Subtask Status"] ?? "")),
+            notes:   String(r["Subtask Notes"] ?? "").trim(),
+          });
+        }
+        // Rows with neither mainTask nor subtaskTask (e.g. blank rows) are skipped
+      }
+
+      const validRows = parsed.filter(r => r.docType);
+
+      if (!validRows.length) {
+        setParseError(
+          "Could not find any valid rows. Make sure the sheet has a 'Type of Task' column."
+        );
         setParsing(false);
         return;
       }
 
-      setRows(parsed);
+      setRows(validRows);
     } catch (err) {
       setParseError("Failed to parse the file. Make sure it's a valid .xlsx file.");
       console.error(err);
@@ -2628,6 +2671,16 @@ function ImportExcelModal({
     if (file) handleFile(file);
   };
 
+  const toggleRowExpanded = (i: number) => {
+    setExpandedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i); else next.add(i);
+      return next;
+    });
+  };
+
+  const totalSubtasks = rows.reduce((acc, r) => acc + r.subtasks.length, 0);
+
   const handleSaveAll = async () => {
     if (!rows.length) return;
     setSaving(true);
@@ -2640,32 +2693,55 @@ function ImportExcelModal({
 
     for (const row of rows) {
       const foundDocType = docTypeMap[row.docType];
+
+      // Build subtask payload
+      const subtasksPayload = row.subtasks
+        .filter(st => st.docType)
+        .map(st => {
+          const stDocType = docTypeMap[st.docType];
+          return {
+            docType:      st.docType,
+            number:       st.number,
+            status:       st.status,
+            notes:        st.notes || undefined,
+            taskCategory: stDocType?.taskCategory ?? row.category,
+            countType:    stDocType?.countType ?? "transaction",
+          };
+        });
+
       const res = await fetch("/api/kpi/transactions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agentId:     selectedAgent._id,
-          agentName:   selectedAgent.name,
-          docType:     row.docType,
-          companyName: "Imported",
-          volume:      row.volume,
+          agentId:        selectedAgent._id,
+          agentName:      selectedAgent.name,
+          docType:        row.docType,
+          companyName:    "Imported",
+          volume:         row.volume,
           date,
-          status:      row.status,
-          notes:       row.notes || undefined,
-          startEpoch:  Date.now(),
+          status:         row.status,
+          notes:          row.notes || undefined,
+          startEpoch:     Date.now(),
           elapsedSeconds: 0,
-          taskCategory: row.category,
-          countType:   foundDocType?.countType ?? "transaction",
-          subtasks:    [],
+          taskCategory:   row.category,
+          countType:      foundDocType?.countType ?? "transaction",
+          subtasks:       subtasksPayload,
         }),
       });
+
       if (res.ok) saved++; else failed++;
     }
 
     setSaving(false);
 
     if (failed === 0) {
-      showSnackbar("success", `${saved} transactions imported`, "All rows have been saved to the log");
+      showSnackbar(
+        "success",
+        `${saved} transaction${saved !== 1 ? "s" : ""} imported`,
+        totalSubtasks > 0
+          ? `${totalSubtasks} subtask${totalSubtasks !== 1 ? "s" : ""} included`
+          : "All rows have been saved to the log"
+      );
     } else {
       showSnackbar("warning", `${saved} saved, ${failed} failed`, "Some rows could not be saved");
     }
@@ -2673,6 +2749,7 @@ function ImportExcelModal({
     onImported();
     onClose();
     setRows([]);
+    setExpandedRows(new Set());
     setFileName("");
   };
 
@@ -2680,6 +2757,7 @@ function ImportExcelModal({
     if (saving) return;
     onClose();
     setRows([]);
+    setExpandedRows(new Set());
     setFileName("");
     setParseError("");
   };
@@ -2692,7 +2770,7 @@ function ImportExcelModal({
       onClick={handleClose}
     >
       <div
-        className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl shadow-2xl w-[560px] max-h-[80vh] flex flex-col"
+        className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl shadow-2xl w-[600px] max-h-[82vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -2701,9 +2779,14 @@ function ImportExcelModal({
             <div className="w-7 h-7 rounded-lg bg-emerald-600 flex items-center justify-center">
               <FileSpreadsheet size={14} className="text-white" />
             </div>
-            <h2 className="text-sm font-semibold text-slate-900 dark:text-zinc-100">Import from Excel</h2>
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-zinc-100">
+              Import from Excel
+            </h2>
           </div>
-          <button onClick={handleClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 transition-colors">
+          <button
+            onClick={handleClose}
+            className="text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 transition-colors"
+          >
             <X size={16} />
           </button>
         </div>
@@ -2732,8 +2815,12 @@ function ImportExcelModal({
               ) : (
                 <>
                   <FileSpreadsheet size={28} className="text-slate-300 dark:text-zinc-600 mx-auto mb-3" />
-                  <p className="text-sm font-semibold text-slate-600 dark:text-zinc-300">Drop your .xlsx file here</p>
-                  <p className="text-xs text-slate-400 dark:text-zinc-500 mt-1">or click to browse — use your exported tx-log file</p>
+                  <p className="text-sm font-semibold text-slate-600 dark:text-zinc-300">
+                    Drop your .xlsx file here
+                  </p>
+                  <p className="text-xs text-slate-400 dark:text-zinc-500 mt-1">
+                    or click to browse — use your exported tx-log file
+                  </p>
                 </>
               )}
             </div>
@@ -2750,46 +2837,150 @@ function ImportExcelModal({
           {rows.length > 0 && (
             <div>
               <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-slate-600 dark:text-zinc-300">
-                  Preview — {rows.length} rows from <span className="text-emerald-600">{fileName}</span>
-                </p>
+                <div className="flex items-center gap-2">
+                  <p className="text-xs font-semibold text-slate-600 dark:text-zinc-300">
+                    Preview —{" "}
+                    <span className="text-emerald-600">{fileName}</span>
+                  </p>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-600">
+                    {rows.length} tx
+                  </span>
+                  {totalSubtasks > 0 && (
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-500">
+                      {totalSubtasks} subtask{totalSubtasks !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
                 <button
-                  onClick={() => { setRows([]); setFileName(""); setParseError(""); }}
+                  onClick={() => {
+                    setRows([]);
+                    setExpandedRows(new Set());
+                    setFileName("");
+                    setParseError("");
+                  }}
                   className="text-xs text-slate-400 hover:text-red-500 transition-colors"
                 >
                   Clear
                 </button>
               </div>
-              <div className="rounded-xl border border-slate-200 dark:border-zinc-700 overflow-hidden max-h-[280px] overflow-y-auto">
+
+              <div className="rounded-xl border border-slate-200 dark:border-zinc-700 overflow-hidden max-h-[320px] overflow-y-auto">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-slate-50 dark:bg-zinc-800 border-b border-slate-200 dark:border-zinc-700">
                     <tr>
-                      {["#", "Type of Task", "Category", "Status", "Vol", "Notes"].map(h => (
-                        <th key={h} className="px-3 py-2 text-left font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider text-[10px]">{h}</th>
+                      {["#", "Type of Task", "Category", "Status", "Vol", "Subtasks", "Notes"].map(h => (
+                        <th
+                          key={h}
+                          className="px-3 py-2 text-left font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider text-[10px]"
+                        >
+                          {h}
+                        </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {rows.map((r, i) => (
-                      <tr key={i} className="border-t border-slate-100 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800/50">
-                        <td className="px-3 py-2 text-slate-400 dark:text-zinc-500">{i + 1}</td>
-                        <td className="px-3 py-2 text-slate-700 dark:text-zinc-200 font-medium">{r.docType}</td>
-                        <td className="px-3 py-2"><CategoryBadge category={r.category} /></td>
-                        <td className="px-3 py-2"><StatusBadge status={r.status} /></td>
-                        <td className="px-3 py-2 text-slate-500 dark:text-zinc-400">{r.volume}</td>
-                        <td className="px-3 py-2 text-slate-400 dark:text-zinc-500 max-w-[120px] truncate">{r.notes || "—"}</td>
-                      </tr>
+                      <>
+                        {/* Parent row */}
+                        <tr
+                          key={`row-${i}`}
+                          className="border-t border-slate-100 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800/50"
+                        >
+                          <td className="px-3 py-2 text-slate-400 dark:text-zinc-500">{i + 1}</td>
+                          <td className="px-3 py-2 text-slate-700 dark:text-zinc-200 font-medium">
+                            {r.docType}
+                          </td>
+                          <td className="px-3 py-2">
+                            <CategoryBadge category={r.category} />
+                          </td>
+                          <td className="px-3 py-2">
+                            <StatusBadge status={r.status} />
+                          </td>
+                          <td className="px-3 py-2 text-slate-500 dark:text-zinc-400">{r.volume}</td>
+                          <td className="px-3 py-2">
+                            {r.subtasks.length > 0 ? (
+                              <button
+                                onClick={() => toggleRowExpanded(i)}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-500 text-[10px] font-semibold hover:bg-indigo-100 transition-colors"
+                              >
+                                {expandedRows.has(i) ? (
+                                  <ChevronDown size={9} />
+                                ) : (
+                                  <ChevronRight size={9} />
+                                )}
+                                {r.subtasks.length}
+                              </button>
+                            ) : (
+                              <span className="text-slate-300 dark:text-zinc-600 text-[10px]">—</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-slate-400 dark:text-zinc-500 max-w-[120px] truncate">
+                            {r.notes || "—"}
+                          </td>
+                        </tr>
+
+                        {/* Expanded subtask rows */}
+                        {expandedRows.has(i) &&
+                          r.subtasks.map((st, si) => (
+                            <tr
+                              key={`row-${i}-st-${si}`}
+                              className="border-t border-indigo-50 dark:border-indigo-900/30 bg-indigo-50/30 dark:bg-indigo-950/10"
+                            >
+                              <td className="pl-7 pr-3 py-1.5 text-slate-300 dark:text-zinc-600 text-[10px]">
+                                ↳ {i + 1}.{si + 1}
+                              </td>
+                              <td className="px-3 py-1.5 text-slate-500 dark:text-zinc-400">
+                                <div className="flex items-center gap-1.5">
+                                  <span>{st.docType}</span>
+                                  {st.number != null && (
+                                    <span className="px-1 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-[9px] font-bold text-slate-400">
+                                      ×{st.number}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-3 py-1.5">
+                                <CategoryBadge
+                                  category={docTypes.find(dt => dt.name === st.docType)?.taskCategory}
+                                />
+                              </td>
+                              <td className="px-3 py-1.5">
+                                <StatusBadge status={st.status} />
+                              </td>
+                              <td className="px-3 py-1.5 text-slate-400">
+                                {st.number ?? "—"}
+                              </td>
+                              <td className="px-3 py-1.5" />
+                              <td className="px-3 py-1.5 text-slate-400 dark:text-zinc-500 max-w-[120px] truncate">
+                                {st.notes || "—"}
+                              </td>
+                            </tr>
+                          ))}
+                      </>
                     ))}
                   </tbody>
                 </table>
               </div>
 
-              {/* Info note */}
-              <div className="mt-2 flex items-start gap-1.5 px-2 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40">
-                <Info size={11} className="text-amber-500 flex-shrink-0 mt-0.5" />
-                <p className="text-[10px] text-amber-700 dark:text-amber-400">
-                  Company name will be set to <span className="font-semibold">"Imported"</span> — you can edit each row after import. Subtasks are not imported.
-                </p>
+              {/* Info notes */}
+              <div className="mt-2 space-y-1.5">
+                <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40">
+                  <Info size={11} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-[10px] text-amber-700 dark:text-amber-400">
+                    Company name will be set to{" "}
+                    <span className="font-semibold">"Imported"</span> — you can edit each row
+                    after import.
+                  </p>
+                </div>
+                {totalSubtasks > 0 && (
+                  <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900/40">
+                    <ListPlus size={11} className="text-indigo-500 flex-shrink-0 mt-0.5" />
+                    <p className="text-[10px] text-indigo-700 dark:text-indigo-400">
+                      {totalSubtasks} subtask{totalSubtasks !== 1 ? "s" : ""} detected and will
+                      be imported. Click the count badge on any row to preview them.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -2817,7 +3008,9 @@ function ImportExcelModal({
             ) : (
               <>
                 <Check size={14} />
-                Import {rows.length > 0 ? `${rows.length} rows` : ""}
+                Import {rows.length > 0
+                  ? `${rows.length} row${rows.length !== 1 ? "s" : ""}${totalSubtasks > 0 ? ` + ${totalSubtasks} subtask${totalSubtasks !== 1 ? "s" : ""}` : ""}`
+                  : ""}
               </>
             )}
           </button>
