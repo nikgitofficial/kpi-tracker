@@ -276,12 +276,22 @@ function AgentStatusCard({ status, onRefresh }: AgentStatusCardProps) {
   const completedBreaks   = session?.breaks.filter(b => b.endEpoch).length ?? 0;
 
   // Exclude __PROD_TIMER__ pseudo-records from TX counts
-  const realTx  = transactions.filter(t => t.docType !== "__PROD_TIMER__");
-  const done    = realTx.filter(t => t.status === "COMPLETION").length;
-  const pending = realTx.filter(t => t.status === "PENDING").length;
-  const hold    = realTx.filter(t => t.status === "HOLD").length;
-  const esc     = realTx.filter(t => t.status === "ESCALATION").length;
-  const totalTx = realTx.length;
+  
+const realTx  = transactions.filter(t => t.docType !== "__PROD_TIMER__");
+const subtaskItems = realTx.flatMap(t =>
+  (t.subtasks ?? []).map(st => ({ ...st, parentStatus: t.status }))
+);
+
+const done    = realTx.filter(t => t.status === "COMPLETION").length
+              + subtaskItems.filter(st => st.parentStatus === "COMPLETION").length;
+const pending = realTx.filter(t => t.status === "PENDING").length
+              + subtaskItems.filter(st => st.parentStatus === "PENDING").length;
+const hold    = realTx.filter(t => t.status === "HOLD").length
+              + subtaskItems.filter(st => st.parentStatus === "HOLD").length;
+const esc     = realTx.filter(t => t.status === "ESCALATION").length
+              + subtaskItems.filter(st => st.parentStatus === "ESCALATION").length;
+const totalTx = realTx.length + subtaskItems.length;
+
   const docTypeMap: Record<string, number> = {};
 realTx.forEach(t => {
   docTypeMap[t.docType] = (docTypeMap[t.docType] ?? 0) + 1;
@@ -776,14 +786,22 @@ const agentStatuses: AgentStatus[] = agents
     };
   })
    .sort((a, b) => {
-    const doneA = a.transactions
-      .filter(t => t.docType !== "__PROD_TIMER__" && t.status === "COMPLETION").length;
-    const doneB = b.transactions
-      .filter(t => t.docType !== "__PROD_TIMER__" && t.status === "COMPLETION").length;
-    const totalTxA = a.transactions.filter(t => t.docType !== "__PROD_TIMER__").length;
-const totalTxB = b.transactions.filter(t => t.docType !== "__PROD_TIMER__").length;
-const escA = a.transactions.filter(t => t.status === "ESCALATION" && t.docType !== "__PROD_TIMER__").length;
-const escB = b.transactions.filter(t => t.status === "ESCALATION" && t.docType !== "__PROD_TIMER__").length;
+   const realA = a.transactions.filter(t => t.docType !== "__PROD_TIMER__");
+const realB = b.transactions.filter(t => t.docType !== "__PROD_TIMER__");
+
+const doneA = realA.filter(t => t.status === "COMPLETION").length
+            + realA.flatMap(t => t.subtasks ?? []).filter(st =>
+                realA.find(t => (t.subtasks ?? []).some(s => s._id === st._id))?.status === "COMPLETION"
+              ).length;
+const doneB = realB.filter(t => t.status === "COMPLETION").length
+            + realB.flatMap(t => t.subtasks ?? []).filter(st =>
+                realB.find(t => (t.subtasks ?? []).some(s => s._id === st._id))?.status === "COMPLETION"
+              ).length;
+
+const totalTxA = realA.reduce((s, t) => s + 1 + (t.subtasks?.length ?? 0), 0);
+const totalTxB = realB.reduce((s, t) => s + 1 + (t.subtasks?.length ?? 0), 0);
+const escA = realA.filter(t => t.status === "ESCALATION").length;
+const escB = realB.filter(t => t.status === "ESCALATION").length;
 const ptsA = (doneA * 10) + (totalTxA * 2) - (escA * 3);
 const ptsB = (doneB * 10) + (totalTxB * 2) - (escB * 3);
     return ptsB - ptsA;
@@ -802,9 +820,9 @@ const ptsB = (doneB * 10) + (totalTxB * 2) - (escB * 3);
 
   // Today's TX count excludes __PROD_TIMER__ pseudo-records
   const totalTodayTx = Object.values(agentTxMap)
-    .flat()
-    .filter(t => t.docType !== "__PROD_TIMER__")
-    .length;
+  .flat()
+  .filter(t => t.docType !== "__PROD_TIMER__")
+  .reduce((sum, t) => sum + 1 + (t.subtasks?.length ?? 0), 0);
 
   /* ── Timeline filters ── */
   const filtered = transactions.filter(tx => {
