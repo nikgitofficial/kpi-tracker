@@ -6,8 +6,89 @@ import {
   FileText, Users, Tag, Timer, Coffee, Activity,
   ChevronDown, ChevronRight, CheckCircle2, AlertCircle,
   Calendar, Filter, RefreshCw, Info, X, Eye, Layers,
-  Package, BarChart2,
+  Package, BarChart2,AlertTriangle,
 } from "lucide-react";
+
+/* ─── Unauthorized Warning Modal ─── */
+function UnauthorizedWarningModal({ onAcknowledge }: { onAcknowledge: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl w-[440px] shadow-2xl overflow-hidden">
+
+        {/* Red gradient top bar */}
+        <div className="h-1.5 w-full bg-gradient-to-r from-red-500 via-rose-500 to-red-600" />
+
+        {/* Header */}
+        <div className="px-6 pt-6 pb-4 flex items-start gap-4">
+          <div className="w-11 h-11 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 flex items-center justify-center flex-shrink-0">
+            <AlertTriangle size={20} className="text-red-500" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-slate-900 dark:text-zinc-100 leading-snug">
+              Restricted Area — Authorized Access Only
+            </h2>
+            <p className="text-[11px] text-red-500 dark:text-red-400 font-semibold mt-0.5 uppercase tracking-wider">
+              Data Export &amp; Database Download
+            </p>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 pb-5 space-y-3">
+
+          {/* Warning banner */}
+          <div className="px-4 py-3 rounded-xl bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50">
+            <p className="text-[12px] text-red-700 dark:text-red-400 leading-relaxed">
+              Unauthorized access to this page is <span className="font-bold">strictly prohibited</span>. 
+              This area contains sensitive business data exports, database snapshots, 
+              and export logs reserved for authorized personnel only.
+            </p>
+          </div>
+
+          {/* Bullet points */}
+          <div className="space-y-2">
+            {[
+              "All export actions are logged and monitored at all times.",
+              "This page is intended for authorized DevOps and Admin personnel only.",
+              "Misuse or unauthorized data export may result in disciplinary action.",
+              "Do not share, screenshot, or distribute any exported data without approval.",
+            ].map((line, i) => (
+              <div key={i} className="flex items-start gap-2.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-red-400 mt-[5px] flex-shrink-0" />
+                <p className="text-[11px] text-slate-600 dark:text-zinc-400 leading-relaxed">{line}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Acknowledgement note */}
+          <div className="px-3 py-2.5 rounded-lg bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 flex items-start gap-2">
+            <div className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-[5px] flex-shrink-0" />
+            <p className="text-[10px] text-slate-500 dark:text-zinc-400 leading-relaxed">
+              By continuing, you confirm that you are an <span className="font-semibold text-slate-700 dark:text-zinc-200">authorized user</span> and 
+              acknowledge that your export activity is being recorded.
+            </p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 pb-6 flex gap-2">
+          <a
+            href="/dashboard/homedashboard"
+            className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 text-sm font-semibold text-center hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors"
+          >
+            Leave Page
+          </a>
+          <button
+            onClick={onAcknowledge}
+            className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-semibold transition-colors shadow-sm shadow-red-200 dark:shadow-none"
+          >
+            I Understand, Continue
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /* ─── Types ─── */
 type CollectionKey = "transactions" | "agents" | "docTypes" | "sessions" | "timers";
@@ -225,6 +306,9 @@ function FormatButton({
 
 /* ─── Main Export Page ─── */
 export default function DataExportPage() {
+  // ── Authorization state ──
+  const [acknowledged, setAcknowledged] = useState(false);
+  
   // ── Selections ──
   const [selectedCollections, setSelectedCollections] = useState<Set<CollectionKey>>(
     new Set<CollectionKey>(["transactions"])
@@ -672,6 +756,11 @@ export default function DataExportPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
+      {/* ── Unauthorized Warning Modal ── */}
+      {!acknowledged && (
+        <UnauthorizedWarningModal onAcknowledge={() => setAcknowledged(true)} />
+      )}
+
       {/* ── Page Header ── */}
       <div className="border-b border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-6 py-5">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
