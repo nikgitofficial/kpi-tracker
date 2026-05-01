@@ -3631,20 +3631,22 @@ useEffect(() => {
                   )}
                   <div>
                     <select
-                      value={selectedAgent?._id ?? ""}
-                      onChange={e => {
-                        const agent = agents.find(a => a._id === e.target.value);
-                        if (agent) setSelectedAgent(agent);
-                      }}
-                      className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-1.5 text-sm font-semibold text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all min-w-[160px]"
-                    >
-                      <option value="" disabled>Select agent…</option>
-                      {agents.map(a => (
-                        <option key={a._id} value={a._id}>
-                          {a.name}{a.group ? ` · ${a.group}` : ""}
-                        </option>
-                      ))}
-                    </select>
+  value={selectedAgent?._id ?? ""}
+  onChange={e => {
+    const agent = agents.find(a => a._id === e.target.value);
+    if (agent) setSelectedAgent(agent);
+  }}
+  className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-1.5 text-sm font-semibold text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all min-w-[160px]"
+>
+  <option value="" disabled>Select agent…</option>
+  {[...agents]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(a => (
+      <option key={a._id} value={a._id}>
+        {a.name}{a.group ? ` · ${a.group}` : ""}
+      </option>
+    ))}
+</select>
                     {selectedAgent && <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">{formattedDate}</p>}
                   </div>
    
