@@ -14,6 +14,7 @@ export interface AgentStatus {
     _id: string;
     status: "PENDING" | "COMPLETION" | "ESCALATION" | "HOLD";
     docType: string;
+    subtasks?: { _id: string; docType: string; status: string }[];
   }[];
   productiveSeconds: number;
   timerPaused: boolean;
@@ -162,16 +163,22 @@ export function AgentLeaderboard({
   const MEDALS = ["🥇", "🥈", "🥉"];
 
   const scored = [...statuses]
-    .map((s) => {
-      const done = s.transactions.filter(
-        (t) => t.status === "COMPLETION" && t.docType !== "__PROD_TIMER__"
-      ).length;
-      const totalTx = s.transactions.filter(t => t.docType !== "__PROD_TIMER__").length;
-      const esc = s.transactions.filter(t => t.status === "ESCALATION" && t.docType !== "__PROD_TIMER__").length;
-      const pts = (done * 10) + (totalTx * 2) - (esc * 3);
-      return { ...s, txDone: done, pts };
-    })
-    .sort((a, b) => b.pts - a.pts);
+  .map((s) => {
+    const realTx = s.transactions.filter(t => t.docType !== "__PROD_TIMER__");
+    const subtaskItems = realTx.flatMap(t =>
+      (t.subtasks ?? []).map(st => ({ ...st, parentStatus: t.status }))
+    );
+
+    const done = realTx.filter(t => t.status === "COMPLETION").length
+                 + subtaskItems.filter(st => st.parentStatus === "COMPLETION").length;
+    const totalTx = realTx.length + subtaskItems.length;
+    const esc = realTx.filter(t => t.status === "ESCALATION").length
+                + subtaskItems.filter(st => st.parentStatus === "ESCALATION").length;
+    const pts = (done * 10) + (totalTx * 2) - (esc * 3);
+
+    return { ...s, txDone: done, totalTx, pts };
+  })
+  .sort((a, b) => b.pts - a.pts);
 
   const maxPts = scored[0]?.pts || 1;
 
@@ -289,8 +296,8 @@ export function AgentLeaderboard({
                     ) : null}
                   </div>
                   <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">
-                    {s.txDone} done · {formatHms(s.productiveSeconds)}
-                  </p>
+  {s.txDone} done · {s.totalTx} total · {formatHms(s.productiveSeconds)}
+</p>
                   <div className="h-1 rounded-full bg-slate-100 dark:bg-zinc-800 mt-1.5 overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all duration-1000 ${barColor}`}
