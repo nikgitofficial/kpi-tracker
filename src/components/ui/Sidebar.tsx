@@ -23,6 +23,7 @@ import {
   TrendingUp,
   Server, 
   UserCog,
+  Database, 
 } from "lucide-react";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 
@@ -42,6 +43,7 @@ const NAV_GROUPS = [
       { icon: FileText,      label: "EOD Report",   href: "/dashboard/eod-report" },
       { icon: BarChart2,     label: "Analytics",    href: "/dashboard/analytics" },
       { icon: UserCog,       label: "Manage Setup", href: "/dashboard/manage-setup" },
+     
     ],
   },
   {
@@ -57,6 +59,7 @@ const NAV_GROUPS = [
       { icon: Shield, label: "Security", href: "/dashboard/security" },
       { icon: Key,    label: "API Keys", href: "/dashboard/api-keys" },
       { icon: Server,  label: "System Logs", href: "/dashboard/system-logs" },
+      { icon: Database,      label: "Data Export",  href: "/dashboard/data-export" },
     ],
   },
 ];
