@@ -12,7 +12,6 @@ import {
   Bell,
   Settings,
   Activity,
-  Key,
   ChevronRight,
   LogOut,
   Menu,
@@ -57,7 +56,6 @@ const NAV_GROUPS = [
     label: "Security",
     items: [
       { icon: Shield, label: "Security", href: "/dashboard/security" },
-      { icon: Key,    label: "API Keys", href: "/dashboard/api-keys" },
       { icon: Server,  label: "System Logs", href: "/dashboard/system-logs" },
       { icon: Database,      label: "Data Export",  href: "/dashboard/data-export" },
     ],

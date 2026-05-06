@@ -3853,37 +3853,44 @@ useEffect(() => {
 
                 {/* Task type summary — split by Production / Non-Production */}
 {Object.keys(docTypeCountMap).length > 0 && (() => {
-  // Build merged counts with category tracking
+  // Single source of truth: always resolve from live docTypes config
+  const resolveCountType = (name: string): CountType =>
+    countTypeMap[name] ?? "transaction";
+
   const mergedProd:    Record<string, { count: number; countType: CountType }> = {};
   const mergedNonProd: Record<string, { count: number; countType: CountType }> = {};
 
-  transactions.forEach(tx => {
-    const category = tx.taskCategory ?? "Production";
-    const add      = tx.countType === "volume" ? (tx.volume ?? 1) : 1;
-    const ct       = (tx.countType ?? "transaction") as CountType;
-    if (category === "Production") {
-      mergedProd[tx.docType] = { count: (mergedProd[tx.docType]?.count ?? 0) + add, countType: ct };
-    } else {
-      mergedNonProd[tx.docType] = { count: (mergedNonProd[tx.docType]?.count ?? 0) + add, countType: ct };
-    }
-  });
+  const addToMerged = (
+    name: string,
+    category: TaskCategory,
+    countType: CountType,
+    value: number
+  ) => {
+    const target = category === "Production" ? mergedProd : mergedNonProd;
+    target[name] = {
+      count:     (target[name]?.count ?? 0) + value,
+      countType,
+    };
+  };
 
   transactions.forEach(tx => {
+    const ct       = resolveCountType(tx.docType);
+    const category = tx.taskCategory ?? "Production";
+    const value    = ct === "volume" ? (tx.volume ?? 1) : 1;
+    addToMerged(tx.docType, category, ct, value);
+
     (tx.subtasks ?? []).forEach(st => {
-      // Fall back to parent tx category if subtask has no explicit category
-      const category = st.taskCategory ?? tx.taskCategory ?? "Production";
-      const add      = st.countType === "volume" ? (st.number ?? 1) : 1;
-      const ct       = (st.countType ?? "transaction") as CountType;
-      if (category === "Production") {
-        mergedProd[st.docType] = { count: (mergedProd[st.docType]?.count ?? 0) + add, countType: ct };
-      } else {
-        mergedNonProd[st.docType] = { count: (mergedNonProd[st.docType]?.count ?? 0) + add, countType: ct };
-      }
+      const stCt       = resolveCountType(st.docType);
+      const stCategory = st.taskCategory ?? category;   // fall back to parent category
+      const stValue    = stCt === "volume" ? (st.number ?? 1) : 1;
+      addToMerged(st.docType, stCategory, stCt, stValue);
     });
   });
 
   const prodEntries    = Object.entries(mergedProd);
   const nonProdEntries = Object.entries(mergedNonProd);
+
+  if (prodEntries.length === 0 && nonProdEntries.length === 0) return null;
 
   const renderTable = (
     entries: [string, { count: number; countType: CountType }][],
@@ -3893,7 +3900,6 @@ useEffect(() => {
     if (entries.length === 0) return null;
     return (
       <div className="rounded-lg border border-slate-200 dark:border-zinc-700 overflow-hidden text-[11px]">
-        {/* Section header */}
         <div className={`px-2.5 py-1 flex items-center gap-1.5 border-b border-slate-200 dark:border-zinc-700 ${
           isProduction
             ? "bg-indigo-50 dark:bg-indigo-950/30"
@@ -3907,26 +3913,37 @@ useEffect(() => {
         <table className="border-collapse w-full">
           <thead>
             <tr className="bg-slate-50 dark:bg-zinc-800/50">
-              <th className="px-2.5 py-1 text-left font-semibold text-slate-500 dark:text-zinc-400 border-r border-slate-200 dark:border-zinc-700 whitespace-nowrap">Task Type</th>
-              <th className="px-2.5 py-1 text-center font-semibold text-slate-500 dark:text-zinc-400 whitespace-nowrap">Count</th>
-             </tr>
+              <th className="px-2.5 py-1 text-left font-semibold text-slate-500 dark:text-zinc-400 border-r border-slate-200 dark:border-zinc-700 whitespace-nowrap">
+                Task Type
+              </th>
+              <th className="px-2.5 py-1 text-center font-semibold text-slate-500 dark:text-zinc-400 whitespace-nowrap">
+                Count
+              </th>
+            </tr>
           </thead>
           <tbody>
             {entries.map(([name, { count, countType }], i) => (
-              <tr key={name} className={i < entries.length - 1 ? "border-t border-slate-100 dark:border-zinc-800" : ""}>
+              <tr
+                key={name}
+                className={i < entries.length - 1 ? "border-t border-slate-100 dark:border-zinc-800" : ""}
+              >
                 <td className="px-2.5 py-1 text-slate-600 dark:text-zinc-300 border-r border-slate-200 dark:border-zinc-700 whitespace-nowrap">
                   <div className="flex items-center gap-1.5">
                     {name}
                     <CountTypeBadge countType={countType} />
                   </div>
-                 </td>
+                </td>
                 <td className={`px-2.5 py-1 text-center font-bold whitespace-nowrap ${
-                  isProduction ? "text-indigo-500 dark:text-indigo-400" : "text-slate-500 dark:text-zinc-400"
-                }`}>{count}</td>
-               </tr>
+                  isProduction
+                    ? "text-indigo-500 dark:text-indigo-400"
+                    : "text-slate-500 dark:text-zinc-400"
+                }`}>
+                  {count}
+                </td>
+              </tr>
             ))}
           </tbody>
-         </table>
+        </table>
       </div>
     );
   };
