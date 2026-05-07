@@ -23,6 +23,7 @@ import {
   Server, 
   UserCog,
   Database, 
+  LifeBuoy,
 } from "lucide-react";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 
@@ -50,6 +51,7 @@ const NAV_GROUPS = [
     items: [
       { icon: User, label: "Profile",       href: "/dashboard/profile" },
       { icon: Bell, label: "Notifications", href: "/dashboard/notifications", badge: 3 },
+      { icon: LifeBuoy, label: "Help Center", href: "/dashboard/help-center" },
     ],
   },
   {
