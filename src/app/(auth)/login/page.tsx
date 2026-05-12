@@ -373,7 +373,7 @@ export default function LoginPage() {
                 placeholder="you@example.com"
                 autoComplete="email"
                 autoFocus
-                className="w-full pl-9 pr-4 py-2.5 text-sm rounded-xl border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all"
+                className="w-full pl-9 pr-4 py-2.5 text-sm rounded-xl border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all autofill:bg-white autofill:shadow-[inset_0_0_0px_1000px_white] autofill:[color-scheme:light]"
               />
             </FormField>
 
@@ -388,7 +388,7 @@ export default function LoginPage() {
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
                   autoComplete="current-password"
-                  className="w-full pl-9 pr-10 py-2.5 text-sm rounded-xl border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all"
+                  className="w-full pl-9 pr-10 py-2.5 text-sm rounded-xl border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all autofill:bg-white autofill:shadow-[inset_0_0_0px_1000px_white] autofill:[color-scheme:light]"
                 />
                 <button
                   type="button"

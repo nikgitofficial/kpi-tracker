@@ -1133,25 +1133,27 @@ function ProductivityTimer({
     <div className="border-b border-slate-100 dark:border-zinc-800 bg-white dark:bg-zinc-900">
       {/* Header */}
       <div className="px-4 pt-4 pb-2 flex items-center gap-2">
-        <Timer size={12} className="text-emerald-500" />
-        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">
-          Productivity Timer
-        </p>
-        {isRunning && (
-          <span className="relative flex h-2 w-2 ml-auto">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-          </span>
-        )}
-        {record && !isRunning && (
-          <button            onClick={openEdit}
-            title="Edit productive time (requires password)"
-            className="ml-auto flex items-center gap-1 text-[10px] text-slate-400 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors"
-          >
-            <Pencil size={11} /> Edit
-          </button>
-        )}
-      </div>
+  <Timer size={12} className="text-emerald-500" />
+  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">
+    Productivity Timer
+  </p>
+  {isRunning && (
+    <span className="relative flex h-2 w-2 ml-auto">
+      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+    </span>
+  )}
+
+  {/* {record && !isRunning && (
+    <button
+      onClick={openEdit}
+      title="Edit productive time (requires password)"
+      className="ml-auto flex items-center gap-1 text-[10px] text-slate-400 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors"
+    >
+      <Pencil size={11} /> Edit
+    </button>
+  )} */}
+</div>
 
       <div className="px-4 pb-4 space-y-3">
         {/* Clock display */}
@@ -1223,22 +1225,22 @@ function ProductivityTimer({
                 </button>
               </>
             )}
-            {isDone && (
-              <>
-                <button
-                  onClick={handleReset}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-zinc-400 text-xs font-semibold hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors"
-                >
-                  <Plus size={12} className="rotate-45" /> Reset
-                </button>
-                <button
-                  onClick={handleContinue}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 text-xs font-semibold hover:bg-emerald-100 transition-colors"
-                >
-                  <Play size={12} /> Continue
-                </button>
-              </>
-            )}
+           {isDone && (
+  <>
+    {/* <button
+      onClick={handleReset}
+      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-zinc-400 text-xs font-semibold hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors"
+    >
+      <Plus size={12} className="rotate-45" /> Reset
+    </button>
+    <button
+      onClick={handleContinue}
+      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 text-xs font-semibold hover:bg-emerald-100 transition-colors"
+    >
+      <Play size={12} /> Continue
+    </button> */}
+  </>
+)}
           </div>
         )}
       </div>
